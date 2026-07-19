@@ -1,0 +1,8 @@
+{
+  // Enable jsonlPreview.json.allowComments to accept this comment.
+  "mode": "jsonc compatibility",
+  "features": [
+    "comments",
+    "trailing commas",
+  ],
+}

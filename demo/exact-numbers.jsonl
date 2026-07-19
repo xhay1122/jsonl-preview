@@ -1,0 +1,7 @@
+{"label":"unsafe-high","value":9007199254740993}
+{"label":"unsafe-low","value":9007199254740992}
+{"label":"precise-decimal","value":0.12345678901234567890123456789}
+{"label":"exponent","value":1.2300e+10}
+{"label":"integer-equivalent","value":12300000000}
+{"label":"negative-zero","value":-0}
+{"label":"small-negative","value":-1e-12}

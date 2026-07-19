@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JSON(L) Preview Webview Harness</title>
+  <style>
+    :root {
+      --vscode-editor-background: #1f1f1f; --vscode-editor-foreground: #d4d4d4;
+      --vscode-editorWidget-background: #252526; --vscode-descriptionForeground: #a8a8a8;
+      --vscode-widget-border: #454545; --vscode-focusBorder: #007fd4;
+      --vscode-button-background: #0e639c; --vscode-button-foreground: #fff; --vscode-button-hoverBackground: #1177bb;
+      --vscode-button-secondaryBackground: #3a3d41; --vscode-button-secondaryForeground: #fff; --vscode-button-secondaryHoverBackground: #45494e;
+      --vscode-input-background: #313131; --vscode-input-foreground: #ccc; --vscode-input-placeholderForeground: #989898;
+      --vscode-list-hoverBackground: #2a2d2e; --vscode-list-focusBackground: #04395e; --vscode-list-activeSelectionBackground: #094771;
+      --vscode-textLink-foreground: #4daafc; --vscode-errorForeground: #f48771;
+      --vscode-notifications-background: #252526; --vscode-notifications-foreground: #fff;
+      --vscode-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --vscode-editor-font-family: "Cascadia Code", Consolas, monospace; --vscode-font-size: 13px;
+    }
+  </style>
+  <link rel="stylesheet" href="../../dist/webview.css">
+</head>
+<body>
+  <div id="app"></div>
+  <script>
+    const rows = Array.from({ length: 18 }, (_, index) => ({
+      resultIndex: index + 1, physicalLine: index + 1, status: 'valid',
+      raw: JSON.stringify({ id: index + 1, name: `用户 ${index + 1}`, active: index % 3 !== 0, createdAt: 1710000000 + index * 86400 }),
+      cells: { id: index + 1, name: `用户 ${index + 1}`, active: index % 3 !== 0, createdAt: 1710000000 + index * 86400 }
+    }));
+    const jsonMode = new URLSearchParams(location.search).get('kind') === 'json';
+    const root = { nodeId: 'root', type: 'object', offset: 0, length: 200, childrenCount: 3, pointer: '', jsonPath: '@' };
+    const rootChildren = [
+      { nodeId: 'users', key: 'users', type: 'array', offset: 2, length: 120, childrenCount: 2, pointer: '/users', jsonPath: '@.users' },
+      { nodeId: 'enabled', key: 'enabled', type: 'boolean', offset: 124, length: 4, childrenCount: 0, pointer: '/enabled', jsonPath: '@.enabled', displayValue: 'true' },
+      { nodeId: 'description', key: 'description', type: 'string', offset: 130, length: 60, childrenCount: 0, pointer: '/description', jsonPath: '@.description', displayValue: '用于验证 React 树形视图、长文本截断和右键菜单的示例内容。' }
+    ];
+    const users = [
+      { nodeId: 'user0', key: '0', type: 'object', offset: 4, length: 50, childrenCount: 2, pointer: '/users/0', jsonPath: '@.users[0]' },
+      { nodeId: 'user1', key: '1', type: 'object', offset: 56, length: 50, childrenCount: 2, pointer: '/users/1', jsonPath: '@.users[1]' }
+    ];
+    const userFields = (parent, name, active) => [
+      { nodeId: `${parent}-name`, key: 'name', type: 'string', offset: 0, length: name.length, childrenCount: 0, pointer: '', jsonPath: `@.users[${parent.slice(-1)}].name`, displayValue: name },
+      { nodeId: `${parent}-active`, key: 'active', type: 'boolean', offset: 0, length: 4, childrenCount: 0, pointer: '', jsonPath: `@.users[${parent.slice(-1)}].active`, displayValue: String(active) }
+    ];
+    let saved = {};
+    window.acquireVsCodeApi = () => ({
+      getState: () => saved,
+      setState: (state) => { saved = state; },
+      postMessage(message) {
+        if (message.type === 'ready') setTimeout(() => window.postMessage({ type: 'init', summary: jsonMode
+          ? { kind: 'json', revision: 'harness-json', byteLength: 2048, parseMilliseconds: 3, errors: 0, root, children: rootChildren, timezone: 'system', maxAutoExpandDepth: 4 }
+          : { kind: 'jsonl', revision: 'harness', byteLength: 1482304, parseMilliseconds: 37, errors: 0, recordCount: 1823, fields: ['id', 'name', 'active', 'createdAt'], timezone: 'system' }, uiState: {} }, '*'));
+        if (message.type === 'page' || message.type === 'query') setTimeout(() => window.postMessage({ type: 'page', rows, total: message.type === 'query' ? 18 : 1823, scannedRows: 1823, matchedRows: message.type === 'query' ? 18 : 1823, isComplete: true, offset: message.offset || 0, queryRevision: message.queryRevision }, '*'), 30);
+        if (message.type === 'children') {
+          const nodes = message.nodeId === 'users' ? users : message.nodeId === 'user0' ? userFields('user0', 'Ada', true) : message.nodeId === 'user1' ? userFields('user1', 'Lin', false) : [];
+          setTimeout(() => window.postMessage({ type: 'children', parentId: message.parentId, generation: message.generation, offset: message.offset, nodes }, '*'), 20);
+        }
+      }
+    });
+  </script>
+  <script src="../../dist/webview.js"></script>
+</body>
+</html>

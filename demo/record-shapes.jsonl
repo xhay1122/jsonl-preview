@@ -1,0 +1,8 @@
+{"kind":"object","nested":{"value":1},"items":["a","b"]}
+["array-root",1,true,null,{"nested":"value"}]
+"string root with Unicode: 你好"
+42
+false
+null
+{}
+[]

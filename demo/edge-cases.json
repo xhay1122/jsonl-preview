@@ -1,0 +1,53 @@
+{
+  "emptyObject": {},
+  "emptyArray": [],
+  "emptyString": "",
+  "escaped": "quote: \"; slash: \\; newline:\nnext line; emoji: 😄",
+  "special keys": {
+    "a/b": "JSON Pointer escape",
+    "tilde~key": "tilde escape",
+    "dot.key": "not a nested path",
+    "bracket[key]": "JSONPath quoting",
+    "": "empty property name"
+  },
+  "numbers": {
+    "unsafeInteger": 9007199254740993,
+    "preciseDecimal": 0.12345678901234567890123456789,
+    "exponent": 1.2300e+10,
+    "negativeZero": -0
+  },
+  "dates": {
+    "utc": "2026-07-18T14:30:00Z",
+    "offset": "2026-07-18T22:30:00+08:00",
+    "compactOffset": "2026-07-18T22:30:00+0800",
+    "timezoneUnknown": "2026-07-18T22:30:00",
+    "dateOnly": "2026-07-18"
+  },
+  "duplicate": "first occurrence",
+  "duplicate": "second occurrence",
+  "deep": {
+    "level1": {
+      "level2": {
+        "level3": {
+          "level4": {
+            "level5": {
+              "level6": {
+                "level7": {
+                  "level8": {
+                    "level9": {
+                      "level10": {
+                        "level11": {
+                          "value": "expand manually beyond the default depth"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

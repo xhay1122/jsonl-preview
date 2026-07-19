@@ -1,0 +1,31 @@
+{
+  "generatedAt": "2026-07-18T14:30:00Z",
+  "store": {
+    "name": "星河书店",
+    "location": {
+      "city": "上海",
+      "timezone": "Asia/Shanghai"
+    }
+  },
+  "products": [
+    {
+      "id": "book-001",
+      "name": "The Left Hand of Darkness",
+      "price": 68.5,
+      "tags": ["science-fiction", "classic"],
+      "inStock": true
+    },
+    {
+      "id": "book-002",
+      "name": "百年孤独",
+      "price": 52,
+      "tags": ["fiction", "translated"],
+      "inStock": false,
+      "restockAt": null
+    }
+  ],
+  "statistics": {
+    "visits": 9007199254740993,
+    "conversionRate": 0.03125
+  }
+}

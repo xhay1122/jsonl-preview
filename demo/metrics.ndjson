@@ -1,0 +1,6 @@
+{"host":"api-01","time":"2026-07-18T10:00:00Z","cpu":0.42,"memoryMb":768,"healthy":true}
+{"host":"api-02","time":"2026-07-18T10:00:00Z","cpu":0.81,"memoryMb":1024,"healthy":true,"region":"cn-east"}
+{"host":"worker-01","time":"2026-07-18T10:00:00Z","cpu":0.17,"memoryMb":512,"healthy":true,"queueDepth":34}
+{"host":"api-01","time":"2026-07-18T10:01:00Z","cpu":0.97,"memoryMb":801,"healthy":false,"alerts":["high-cpu"]}
+{"host":"api-02","time":"2026-07-18T10:01:00Z","cpu":0.55,"memoryMb":null,"healthy":true,"note":"memory probe unavailable"}
+{"host":"worker-01","time":"2026-07-18T10:01:00Z","cpu":0.23,"memoryMb":530,"healthy":true,"queueDepth":0,"labels":{"pool":"email","version":"2.4.1"}}

@@ -1,0 +1,5 @@
+{"id":1,"status":"ok","message":"valid record before errors"}
+{"id":2,"status":"broken","message":"missing closing brace"
+{"id":3,"status":"broken",,"message":"extra comma"}
+not-json-at-all
+{"id":5,"status":"ok","message":"valid record after errors"}

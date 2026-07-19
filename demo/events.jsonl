@@ -1,0 +1,10 @@
+{"id":1,"timestamp":"2026-07-18T08:00:01Z","level":"info","service":"gateway","message":"request accepted","durationMs":12,"userId":"u-101"}
+{"id":2,"timestamp":"2026-07-18T08:00:02Z","level":"info","service":"catalog","message":"cache hit","durationMs":3,"userId":"u-102"}
+{"id":3,"timestamp":"2026-07-18T08:00:04Z","level":"warn","service":"checkout","message":"payment retry","durationMs":487,"userId":"u-101","retry":1}
+{"id":4,"timestamp":"2026-07-18T08:00:05Z","level":"error","service":"checkout","message":"payment declined","durationMs":622,"userId":"u-103","errorCode":"CARD_DECLINED"}
+{"id":5,"timestamp":"2026-07-18T08:00:08Z","level":"info","service":"gateway","message":"request completed","durationMs":31,"userId":"u-104"}
+{"id":6,"timestamp":"2026-07-18T08:01:10Z","level":"debug","service":"catalog","message":"refresh started","durationMs":null}
+{"id":7,"timestamp":"2026-07-18T08:01:12Z","level":"info","service":"catalog","message":"refresh completed","durationMs":1934,"records":2500}
+{"id":8,"timestamp":"2026-07-18T08:02:00+08:00","level":"warn","service":"gateway","message":"rate limit nearing threshold","usage":0.92}
+{"id":9,"timestamp":"2026-07-18T08:02:03Z","level":"info","service":"profile","message":"资料已更新","durationMs":46,"userId":"u-105"}
+{"id":10,"timestamp":"2026-07-18T08:02:09Z","level":"error","service":"profile","message":"avatar upload failed","durationMs":3012,"userId":"u-106","details":{"status":503,"region":"cn-east"}}

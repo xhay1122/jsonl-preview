@@ -1,0 +1,11 @@
+{
+  "editor.text": "JSON(L) Preview",
+  "editor.large": "JSONL Large File Preview",
+  "command.open": "JSON(L) Preview: Open Preview",
+  "command.format": "JSON Preview: Format Document",
+  "command.repair": "JSON Preview: Diagnose and Repair",
+  "command.export": "JSONL Preview: Export Filtered Records",
+  "command.convert": "JSON(L) Preview: Convert Format",
+  "command.reset": "JSON(L) Preview: Reset View State",
+  "configuration.showEditorTitleIcon.description": "Show the JSON(L) Preview icon in the editor title bar for JSON, JSONL, NDJSON, and untitled files."
+}

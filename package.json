@@ -1,0 +1,236 @@
+{
+  "name": "jsonl-preview",
+  "displayName": "JSON / JSONL Preview",
+  "description": "Fast, safe previews for JSON and JSON Lines files.",
+  "version": "0.1.0",
+  "publisher": "jsonl-preview",
+  "icon": "assets/icon.png",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "json",
+    "jsonl",
+    "ndjson",
+    "preview"
+  ],
+  "main": "./dist/extension.js",
+  "files": [
+    "dist",
+    "assets",
+    "package.nls.json",
+    "package.nls.zh-cn.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "activationEvents": [
+    "onCustomEditor:jsonlPreview.text",
+    "onCustomEditor:jsonlPreview.large",
+    "onCommand:jsonlPreview.openPreview"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "jsonlPreview.text",
+        "displayName": "%editor.text%",
+        "selector": [
+          {
+            "filenamePattern": "*.json"
+          },
+          {
+            "filenamePattern": "*.jsonl"
+          },
+          {
+            "filenamePattern": "*.ndjson"
+          }
+        ],
+        "priority": "option"
+      },
+      {
+        "viewType": "jsonlPreview.large",
+        "displayName": "%editor.large%",
+        "selector": [
+          {
+            "filenamePattern": "*.jsonl"
+          },
+          {
+            "filenamePattern": "*.ndjson"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "jsonlPreview.openPreview",
+        "title": "%command.open%",
+        "icon": {
+          "light": "assets/preview-light.svg",
+          "dark": "assets/preview-dark.svg"
+        }
+      },
+      {
+        "command": "jsonlPreview.formatDocument",
+        "title": "%command.format%"
+      },
+      {
+        "command": "jsonlPreview.diagnoseRepair",
+        "title": "%command.repair%"
+      },
+      {
+        "command": "jsonlPreview.exportFiltered",
+        "title": "%command.export%"
+      },
+      {
+        "command": "jsonlPreview.convertFormat",
+        "title": "%command.convert%"
+      },
+      {
+        "command": "jsonlPreview.resetViewState",
+        "title": "%command.reset%"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "jsonlPreview.openPreview",
+          "when": "config.jsonlPreview.showEditorTitleIcon && (resourceScheme == untitled || resourceExtname == .json || resourceExtname == .jsonl || resourceExtname == .ndjson)",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "JSON(L) Preview",
+      "properties": {
+        "jsonlPreview.showEditorTitleIcon": {
+          "type": "boolean",
+          "default": true,
+          "scope": "window",
+          "description": "%configuration.showEditorTitleIcon.description%"
+        },
+        "jsonlPreview.json.indent": {
+          "type": "number",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 8
+        },
+        "jsonlPreview.json.allowComments": {
+          "type": "boolean",
+          "default": false
+        },
+        "jsonlPreview.json.allowTrailingComma": {
+          "type": "boolean",
+          "default": false
+        },
+        "jsonlPreview.json.maxAutoExpandDepth": {
+          "type": "number",
+          "default": 10,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "Maximum number of JSON tree levels expanded automatically. Deeper nodes remain available for manual expansion."
+        },
+        "jsonlPreview.jsonl.pageSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 20,
+          "maximum": 1000
+        },
+        "jsonlPreview.jsonl.schemaSampleSize": {
+          "type": "number",
+          "default": 1000,
+          "minimum": 10,
+          "maximum": 10000
+        },
+        "jsonlPreview.jsonl.ignoreEmptyLines": {
+          "type": "boolean",
+          "default": true
+        },
+        "jsonlPreview.largeFileThresholdMB": {
+          "type": "number",
+          "default": 50,
+          "minimum": 1
+        },
+        "jsonlPreview.normalModeMaxFileMB": {
+          "type": "number",
+          "default": 100,
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "jsonlPreview.maxLineLengthMB": {
+          "type": "number",
+          "default": 5,
+          "minimum": 0.1,
+          "maximum": 1024
+        },
+        "jsonlPreview.maxSortableRows": {
+          "type": "number",
+          "default": 1000000,
+          "minimum": 1000,
+          "maximum": 100000000
+        },
+        "jsonlPreview.queryCacheMB": {
+          "type": "number",
+          "default": 128,
+          "minimum": 8,
+          "maximum": 4096
+        },
+        "jsonlPreview.timezone": {
+          "type": "string",
+          "default": "system"
+        },
+        "jsonlPreview.dateFormat": {
+          "type": "string",
+          "default": "auto"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "test": "npm run build && vitest run",
+    "test:watch": "vitest",
+    "benchmark": "vitest bench --run",
+    "performance:100mb": "npm run build && node test/performance/smoke100mb.mjs",
+    "package": "npm run check && npm run test",
+    "vsix": "npm run package && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "dependencies": {
+    "jmespath": "^0.16.0",
+    "jsonc-parser": "^3.3.1",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tdesign-icons-react": "^0.6.6",
+    "tdesign-react": "^1.18.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.5.19",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,7 @@
+{"physicalLine":1,"note":"before blank lines"}
+
+   
+	
+{"physicalLine":5,"note":"after blank and whitespace-only lines"}
+
+{"physicalLine":7,"note":"final record without a following blank line"}

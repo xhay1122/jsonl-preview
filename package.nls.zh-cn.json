@@ -1,0 +1,11 @@
+{
+  "editor.text": "JSON(L) 预览",
+  "editor.large": "JSONL 大文件预览",
+  "command.open": "JSON(L) 预览: 打开预览",
+  "command.format": "JSON 预览: 格式化文档",
+  "command.repair": "JSON 预览: 诊断并修复",
+  "command.export": "JSONL 预览: 导出筛选记录",
+  "command.convert": "JSON(L) 预览: 转换格式",
+  "command.reset": "JSON(L) 预览: 重置视图状态",
+  "configuration.showEditorTitleIcon.description": "在 JSON、JSONL、NDJSON 和未命名文件的编辑器标题栏中显示 JSON(L) 预览图标。"
+}

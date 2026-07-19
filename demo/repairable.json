@@ -1,0 +1,6 @@
+{
+  "name": "incomplete document",
+  "enabled": true,
+  "items": [
+    { "id": 1, "value": "alpha" },
+    { "id": 2, "value": "beta" }

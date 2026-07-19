@@ -1,0 +1,254 @@
+// @vitest-environment jsdom
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { WebviewRequest } from '../../src/webview/protocol.js';
+
+const bridge = vi.hoisted(() => {
+  const messages: WebviewRequest[] = [];
+  let saved: unknown = {};
+  return {
+    messages,
+    api: {
+      postMessage(message: WebviewRequest) { messages.push(message); },
+      setState(state: unknown) { saved = state; },
+      getState() { return saved; }
+    },
+    reset() { messages.length = 0; saved = {}; }
+  };
+});
+
+vi.mock('../../src/webview/bridge.js', () => ({
+  vscode: bridge.api,
+  send: (message: WebviewRequest) => bridge.api.postMessage(message)
+}));
+
+import { App } from '../../src/webview/app.js';
+
+describe('React webview app', () => {
+  beforeEach(() => bridge.reset());
+  afterEach(() => cleanup());
+
+  it('renders initialization data and sends a debounced query intent', async () => {
+    render(<App />);
+    expect(bridge.messages).toContainEqual({ type: 'ready' });
+
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init',
+      summary: { kind: 'jsonl', revision: 'v1', byteLength: 2048, parseMilliseconds: 4, errors: 0, recordCount: 2, fields: ['name'] },
+      uiState: {}
+    } }));
+
+    expect(await screen.findByText('JSONL Preview')).toBeTruthy();
+    const input = screen.getByRole('searchbox');
+    expect(input.getAttribute('placeholder')).toBe('Filter rows by value or enter JMESPath');
+    await userEvent.type(input, 'active');
+
+    await waitFor(() => expect(bridge.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'query', jmesPath: 'active' })])), { timeout: 1500 });
+    const beforeClear = bridge.messages.length;
+    await userEvent.clear(input);
+    await waitFor(() => expect(bridge.messages.slice(beforeClear).some((message) => message.type === 'query' && !('jmesPath' in message))).toBe(true), { timeout: 1500 });
+  });
+
+  it('automatically dismisses search syntax errors', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<App />);
+      act(() => {
+        window.dispatchEvent(new MessageEvent('message', { data: {
+          type: 'init', summary: { kind: 'json', revision: 'v1', byteLength: 10, parseMilliseconds: 1, errors: 0, locale: 'en' }, uiState: {}
+        } }));
+        window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Invalid JMESPath' } }));
+      });
+
+      expect(screen.getByRole('alert').textContent).toBe('Invalid JMESPath');
+      act(() => vi.advanceTimersByTime(4000));
+      expect(screen.queryByRole('alert')).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the grid and search visible while previewing a JSONL row', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init',
+      summary: { kind: 'jsonl', revision: 'v1', byteLength: 20, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['name'], locale: 'zh-cn' },
+      uiState: {}
+    } }));
+    await waitFor(() => expect(bridge.messages.some((message) => message.type === 'page')).toBe(true));
+    const page = bridge.messages.findLast((message) => message.type === 'page');
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page', rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"Ada"}', cells: { name: 'Ada' } }],
+      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      queryRevision: page && 'queryRevision' in page ? page.queryRevision : 1
+    } }));
+    await userEvent.click(await screen.findByText('Ada'));
+    expect(screen.getByRole('searchbox')).toBeTruthy();
+    expect(screen.getByRole('grid')).toBeTruthy();
+    expect(await screen.findByText('第 1 行')).toBeTruthy();
+    const mask = document.querySelector<HTMLElement>('.t-drawer__mask');
+    expect(mask).toBeTruthy();
+    await userEvent.click(mask!);
+    await waitFor(() => expect(document.querySelector('.t-drawer')).toBeNull());
+  });
+
+  it('shows row and cell copy actions only for JSONL table cells', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'jsonl', revision: 'menus', byteLength: 20, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['name'], locale: 'en' }, uiState: {}
+    } }));
+    const request = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page', rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"Ada"}', cells: { name: 'Ada' } }],
+      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      queryRevision: request && 'queryRevision' in request ? request.queryRevision : 1
+    } }));
+
+    fireEvent.contextMenu(await screen.findByText('Ada'));
+    expect(screen.getByRole('menuitem', { name: 'Copy Row' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Copy Cell' }));
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: 'Ada' });
+
+    expect(fireEvent.contextMenu(document.querySelector('main')!)).toBe(false);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(fireEvent.contextMenu(screen.getByRole('searchbox'))).toBe(true);
+  });
+
+  it('shows valid and malformed JSONL records on the first response without requiring a sort', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'jsonl', revision: 'invalid-lines', byteLength: 240, parseMilliseconds: 1, errors: 3, recordCount: 5, fields: ['id', 'status', 'message'], locale: 'en', pageSize: 1000 }, uiState: {}
+    } }));
+    const request = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page', rows: [
+        { resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"id":1,"status":"ok"}', cells: { id: 1, status: 'ok' } },
+        { resultIndex: 2, physicalLine: 2, status: 'invalid', raw: '{"id":2', cells: {}, error: { code: 'INVALID_JSONL_RECORD', message: 'invalid', line: 2, column: 8, offset: 7, length: 1, severity: 'error' } },
+        { resultIndex: 3, physicalLine: 5, status: 'valid', raw: '{"id":5,"status":"ok"}', cells: { id: 5, status: 'ok' } }
+      ], total: 5, scannedRows: 5, matchedRows: 5, isComplete: true, offset: 0,
+      queryRevision: request && 'queryRevision' in request ? request.queryRevision : 1
+    } }));
+
+    expect(await screen.findAllByText('5')).toHaveLength(2);
+    expect(screen.getAllByText('ok')).toHaveLength(2);
+    expect(document.querySelector('.t-pagination')).toBeNull();
+  });
+
+  it('requests and renders the final server-side page', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'jsonl', revision: 'pagination', byteLength: 100, parseMilliseconds: 1, errors: 0, recordCount: 3, fields: ['name'], locale: 'en', pageSize: 2 }, uiState: {}
+    } }));
+    const initial = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    const queryRevision = initial && 'queryRevision' in initial ? initial.queryRevision : 1;
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'page', rows: [
+      { resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"first"}', cells: { name: 'first' } },
+      { resultIndex: 2, physicalLine: 2, status: 'valid', raw: '{"name":"second"}', cells: { name: 'second' } }
+    ], total: 3, scannedRows: 3, matchedRows: 3, isComplete: true, offset: 0, queryRevision } }));
+
+    await screen.findByText('first');
+    const secondPage = await waitFor(() => {
+      const found = [...document.querySelectorAll<HTMLButtonElement>('.t-pagination__number')].find((button) => button.textContent?.trim() === '2');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    await userEvent.click(secondPage);
+    await waitFor(() => expect(bridge.messages).toContainEqual(expect.objectContaining({ type: 'page', offset: 2, queryRevision })));
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'page', rows: [
+      { resultIndex: 3, physicalLine: 3, status: 'valid', raw: '{"name":"last"}', cells: { name: 'last' } }
+    ], total: 3, scannedRows: 3, matchedRows: 3, isComplete: true, offset: 2, queryRevision } }));
+    expect(await screen.findByText('last')).toBeTruthy();
+  });
+
+  it('loads wide JSON trees only after an explicit request', async () => {
+    render(<App />);
+    const root = { nodeId: 'root', type: 'array', offset: 0, length: 100, childrenCount: 1000, pointer: '', jsonPath: '@' };
+    const child = { nodeId: 'child', key: '0', type: 'number', offset: 1, length: 1, childrenCount: 0, pointer: '/0', jsonPath: '@[0]', displayValue: '1', rawText: '1' };
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'json', revision: 'v1', byteLength: 100, parseMilliseconds: 1, errors: 0, root, children: [child], locale: 'en' }, uiState: {}
+    } }));
+    expect(await screen.findByText('Load more (1/1000)')).toBeTruthy();
+    expect(bridge.messages.some((message) => message.type === 'children')).toBe(false);
+    await userEvent.click(screen.getByText('Load more (1/1000)'));
+    expect(bridge.messages).toContainEqual(expect.objectContaining({ type: 'children', nodeId: 'root', offset: 1 }));
+  });
+
+  it('renders nested children as soon as their async page arrives', async () => {
+    render(<App />);
+    const root = { nodeId: 'root', type: 'object', offset: 0, length: 100, childrenCount: 1, pointer: '', jsonPath: '@' };
+    const branch = { nodeId: 'branch', key: 'items', type: 'array', offset: 1, length: 90, childrenCount: 2, pointer: '/items', jsonPath: '@.items' };
+    const leaf = { nodeId: 'leaf', key: '0', type: 'null', offset: 2, length: 4, childrenCount: 0, pointer: '/items/0', jsonPath: '@.items[0]', displayValue: 'null', rawText: 'null' };
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'json', revision: 'v1', byteLength: 100, parseMilliseconds: 1, errors: 0, root, children: [branch], locale: 'en' }, uiState: {}
+    } }));
+
+    const request = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'children' && message.nodeId === 'branch');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'children', parentId: 'branch', generation: request && 'generation' in request ? request.generation : 1, offset: 0, nodes: [leaf]
+    } }));
+
+    expect(await screen.findByText('null')).toBeTruthy();
+    expect(screen.getByText('Load more (1/2)')).toBeTruthy();
+  });
+
+  it('requests a bounded data window while virtually scrolling large results', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'init', summary: { kind: 'jsonl', revision: 'v1', byteLength: 1000, parseMilliseconds: 1, errors: 0, recordCount: 1000, fields: ['id'], locale: 'en', pageSize: 100 }, uiState: {} } }));
+    await waitFor(() => expect(bridge.messages.some((message) => message.type === 'page')).toBe(true));
+    const initial = bridge.messages.findLast((message) => message.type === 'page');
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'page', rows: [
+      { resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"id":1}', cells: { id: 1 } },
+      { resultIndex: 2, physicalLine: 2, status: 'valid', raw: '{"id":2}', cells: { id: 2 } }
+    ], total: 1000, scannedRows: 1000, matchedRows: 1000, isComplete: true, offset: 0, queryRevision: initial && 'queryRevision' in initial ? initial.queryRevision : 1 } }));
+    const grid = await screen.findByRole('grid');
+    Object.defineProperties(grid, { scrollHeight: { configurable: true, value: 1000 }, clientHeight: { configurable: true, value: 100 }, scrollTop: { configurable: true, value: 450 } });
+    fireEvent.scroll(grid);
+    await waitFor(() => expect(bridge.messages.some((message) => message.type === 'page' && message.offset === 400)).toBe(true));
+    expect(grid.getAttribute('aria-busy')).toBe('true');
+    expect(grid.querySelectorAll('[data-grid-row]')).toHaveLength(0);
+    expect(document.querySelector('.t-loading')).toBeTruthy();
+  });
+
+  it('restores original line order from the index header after custom sorting', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'init', summary: { kind: 'jsonl', revision: 'v1', byteLength: 100, parseMilliseconds: 1, errors: 0, recordCount: 2, fields: ['id'], locale: 'en' }, uiState: {} } }));
+    const fieldHeader = await screen.findByRole('columnheader', { name: 'id' });
+    await userEvent.click(fieldHeader);
+    await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { path: '/id', direction: 'asc' } })), { timeout: 1500 });
+
+    await userEvent.click(screen.getByTitle('Sort by original line number'));
+    await waitFor(() => {
+      const latest = bridge.messages.findLast((message) => message.type === 'query');
+      expect(latest).toBeTruthy();
+      expect(latest && 'sort' in latest).toBe(false);
+    }, { timeout: 1500 });
+
+    await userEvent.click(screen.getByTitle('Sort by original line number'));
+    await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { by: 'physicalLine', direction: 'desc' } })), { timeout: 1500 });
+  });
+
+  it('sorts timestamp ascending by default when that field exists', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'init', summary: { kind: 'jsonl', revision: 'v1', byteLength: 100, parseMilliseconds: 1, errors: 0, recordCount: 2, fields: ['id', 'timestamp'], locale: 'en' }, uiState: {} } }));
+
+    await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { path: '/timestamp', direction: 'asc' } })), { timeout: 1500 });
+    expect(screen.getByRole('columnheader', { name: /timestamp/ }).getAttribute('aria-sort')).toBe('ascending');
+  });
+});
