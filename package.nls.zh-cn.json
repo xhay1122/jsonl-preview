@@ -2,6 +2,7 @@
   "editor.text": "JSON(L) 预览",
   "editor.large": "JSONL 大文件预览",
   "command.open": "JSON(L) 预览: 打开预览",
+  "command.previewSelection": "JSON(L) 预览: 预览所选内容",
   "command.format": "JSON 预览: 格式化文档",
   "command.repair": "JSON 预览: 诊断并修复",
   "command.export": "JSONL 预览: 导出筛选记录",

@@ -31,7 +31,8 @@
   "activationEvents": [
     "onCustomEditor:jsonlPreview.text",
     "onCustomEditor:jsonlPreview.large",
-    "onCommand:jsonlPreview.openPreview"
+    "onCommand:jsonlPreview.openPreview",
+    "onCommand:jsonlPreview.previewSelection"
   ],
   "extensionKind": [
     "workspace"
@@ -83,6 +84,10 @@
         }
       },
       {
+        "command": "jsonlPreview.previewSelection",
+        "title": "%command.previewSelection%"
+      },
+      {
         "command": "jsonlPreview.formatDocument",
         "title": "%command.format%"
       },
@@ -104,6 +109,13 @@
       }
     ],
     "menus": {
+      "editor/context": [
+        {
+          "command": "jsonlPreview.previewSelection",
+          "when": "editorHasSelection",
+          "group": "navigation"
+        }
+      ],
       "editor/title": [
         {
           "command": "jsonlPreview.openPreview",

@@ -2,6 +2,7 @@
   "editor.text": "JSON(L) Preview",
   "editor.large": "JSONL Large File Preview",
   "command.open": "JSON(L) Preview: Open Preview",
+  "command.previewSelection": "JSON(L) Preview: Preview Selection",
   "command.format": "JSON Preview: Format Document",
   "command.repair": "JSON Preview: Diagnose and Repair",
   "command.export": "JSONL Preview: Export Filtered Records",
