@@ -42,7 +42,10 @@ async function targetUri(input?: vscode.Uri): Promise<vscode.Uri | undefined> { 
 async function openPreview(input?: vscode.Uri): Promise<void> {
   const uri = await targetUri(input); if (!uri) { await vscode.window.showInformationMessage('Open a JSON, JSONL or NDJSON file first.'); return; }
   const previewUri = activePreviewUri();
-  if (previewUri?.toString() === uri.toString()) { await vscode.commands.executeCommand('workbench.action.reopenTextEditor'); return; }
+  if (previewUri?.toString() === uri.toString()) {
+    await vscode.commands.executeCommand('reopenActiveEditorWith', 'default');
+    return;
+  }
   const viewColumn = vscode.window.activeTextEditor?.document.uri.toString() === uri.toString() ? vscode.window.activeTextEditor.viewColumn : undefined;
   const extension = uri.path.toLowerCase().split('.').at(-1), isUntitled = uri.scheme === 'untitled';
   if (!isUntitled && !['json', 'jsonl', 'ndjson'].includes(extension ?? '')) { await vscode.window.showErrorMessage('This file is not JSON, JSONL or NDJSON.'); return; }

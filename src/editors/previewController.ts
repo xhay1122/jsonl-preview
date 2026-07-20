@@ -146,7 +146,7 @@ export class PreviewController implements vscode.Disposable {
     if (this.source.mode === 'byte-stream') {
       const choice = await vscode.window.showWarningMessage('Opening source loads the complete large file in the text editor.', { modal: true }, 'Open Source'); if (!choice) return;
     }
-    await vscode.commands.executeCommand('workbench.action.reopenTextEditor');
+    await vscode.commands.executeCommand('reopenActiveEditorWith', 'default');
   }
   private async revealLine(line: number): Promise<void> {
     if (this.source.mode === 'byte-stream') {
