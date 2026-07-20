@@ -98,6 +98,7 @@ describe('JSONL index', () => {
     expect(row.rawTruncated).toBe(true);
     expect(row.raw.length).toBeLessThan(raw.length);
     expect(await index.recordText(1)).toBe(raw);
+    expect(await index.cellText(1, 'content')).toBe(JSON.stringify(content, null, 2));
     await index.close();
   });
   it('rejects pages after a streamed source changes', async () => {

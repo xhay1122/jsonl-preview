@@ -139,10 +139,13 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .t-drawer { color: var(--vscode-editor-foreground); background: transparent; }
 .t-drawer__content-wrapper { height: 100%; max-height: 100vh; background: var(--vscode-editorWidget-background); }
 .t-drawer__content { display: flex; height: 100%; min-height: 0; flex-direction: column; }
-.t-drawer__header { border-bottom-color: var(--border); font-family: var(--vscode-font-family); }
+.t-drawer__header { padding-right: calc(var(--td-comp-size-xs) + var(--td-comp-margin-s) * 2); border-bottom-color: var(--border); font-family: var(--vscode-font-family); }
+.t-drawer__close-btn { z-index: 1; flex: 0 0 auto; }
+.drawer-header-content { display: flex; width: 100%; min-width: 0; align-items: center; gap: 16px; }
+.drawer-title { min-width: 0; overflow: hidden; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
+.drawer-header-actions { display: flex; flex: 0 1 auto; justify-content: flex-end; gap: 8px; }
 .t-drawer__body { min-height: 0; flex: 1 1 auto; overflow: auto; padding: 0; }
 .drawer-content { min-height: 100%; }
-.drawer-actions { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; background: var(--vscode-editorWidget-background); border-bottom: 1px solid var(--border); }
 .drawer-loading { display: flex; min-height: 240px; align-items: center; justify-content: center; gap: 10px; color: var(--muted); }
 .text-viewer { margin: 0; padding: 18px; overflow-wrap: anywhere; font-family: var(--vscode-editor-font-family); line-height: 1.6; white-space: pre-wrap; }
 .drawer-tree { min-height: 100%; padding-bottom: 24px; }

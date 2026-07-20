@@ -23,6 +23,12 @@ describe('webview drawer styles', () => {
     expect(declarations('.t-drawer__body')).toMatch(/min-height:\s*0/);
   });
 
+  it('reserves header space for the close button and keeps it above header actions', () => {
+    expect(declarations('.t-drawer__header')).toMatch(/padding-right:\s*calc\(var\(--td-comp-size-xs\) \+ var\(--td-comp-margin-s\) \* 2\)/);
+    expect(declarations('.t-drawer__close-btn')).toMatch(/z-index:\s*1/);
+    expect(declarations('.drawer-header-actions')).toMatch(/flex:\s*0 1 auto/);
+  });
+
   it('wraps complete short values while keeping the long-value action on one line', () => {
     expect(declarations('.drawer-tree .tree-row')).toMatch(/align-items:\s*flex-start/);
     expect(declarations('.drawer-tree .json-value:not(.long-value)')).toMatch(/white-space:\s*pre-wrap/);

@@ -31,6 +31,8 @@ export type WebviewRequest =
   | { type: 'copy'; nodeId: string; format: 'raw' | 'compact' | 'pretty' }
   | { type: 'openTemp'; text: string }
   | { type: 'openTemp'; nodeId: string }
+  | { type: 'openTemp'; physicalLine: number }
+  | { type: 'openTemp'; physicalLine: number; field: string }
   | { type: 'openSource' }
   | { type: 'format' }
   | { type: 'repair' }

@@ -165,7 +165,14 @@ export class PreviewController implements vscode.Disposable {
   }
   private async openTemporary(message: WebviewMessage, session: SessionHandle): Promise<void> {
     let content = typeof message.text === 'string' ? message.text : '';
-    if (!content && typeof message.nodeId === 'string') {
+    if (!content && Number.isSafeInteger(message.physicalLine) && Number(message.physicalLine) > 0) {
+      const field = typeof message.field === 'string' ? message.field : '';
+      const data = await this.client.request(field
+        ? { type: 'jsonl/getCell', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine), field }
+        : { type: 'jsonl/getRecord', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine) }) as { content: string };
+      if (this.session !== session || this.disposed) return;
+      content = data.content;
+    } else if (!content && typeof message.nodeId === 'string') {
       const data = await this.client.request({ type: 'json/getNodeText', sessionId: session.id, revision: session.revision, nodeId: message.nodeId, format: 'pretty' }) as { content: string };
       if (this.session !== session || this.disposed) return;
       content = data.content;

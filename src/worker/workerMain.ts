@@ -84,6 +84,9 @@ parentPort.on('message', async (value: unknown) => {
     } else if (request.type === 'jsonl/getRecord') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: await session.jsonl.recordText(request.physicalLine) } });
+    } else if (request.type === 'jsonl/getCell') {
+      if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
+      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: await session.jsonl.cellText(request.physicalLine, request.field) } });
     } else if (request.type === 'jsonl/applyQuery') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       session.cancelled.delete(request.requestId); session.activeQueries.add(request.requestId);

@@ -62,6 +62,15 @@ function previewValue(value: unknown): unknown {
   return value;
 }
 
+function temporaryText(value: unknown): string {
+  let output = value;
+  if (typeof value === 'string') {
+    try { output = JSON.parse(value) as unknown; } catch { /* preserve a plain string as a JSON string */ }
+  }
+  const encoded = JSON.stringify(output, null, 2);
+  return encoded === undefined ? String(output) : encoded;
+}
+
 function isJmesPathMatch(value: unknown): boolean {
   if (value === null || value === false || value === '') return false;
   if (Array.isArray(value)) return value.length > 0;
@@ -357,6 +366,15 @@ export class JsonlIndex {
     if (physicalLine === 1 && raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
     await this.ensureSourceUnchanged();
     return raw;
+  }
+
+  async cellText(physicalLine: number, field: string): Promise<string> {
+    await this.ensureSourceUnchanged();
+    const parsed = await this.parseLine(physicalLine - 1, { cache: true, cells: true, exactNumbers: false });
+    if (!(field in parsed.cells)) throw new PreviewError('CELL_NOT_FOUND', 'The requested cell no longer exists.');
+    const content = temporaryText(parsed.cells[field]);
+    await this.ensureSourceUnchanged();
+    return content;
   }
 
   async export(queryId: string, format: 'jsonl' | 'json', maxBytes: number): Promise<string> {

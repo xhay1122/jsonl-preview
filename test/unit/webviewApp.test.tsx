@@ -87,7 +87,11 @@ describe('React webview app', () => {
     expect(screen.getByRole('searchbox')).toBeTruthy();
     expect(screen.getByRole('grid')).toBeTruthy();
     expect(await screen.findByText('第 1 行')).toBeTruthy();
-    expect(screen.getByRole('button', { name: '临时 Tab 打开' })).toBeTruthy();
+    const temporaryTab = screen.getByRole('button', { name: '临时 Tab 打开' });
+    expect(temporaryTab.querySelector('.t-icon-tab')).toBeTruthy();
+    expect(temporaryTab.closest('.t-drawer__header')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '复制整行' }).closest('.t-drawer__header')).toBeTruthy();
+    expect(document.querySelector('.t-drawer__close-btn')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '查看' })).toBeNull();
     expect(document.querySelector('.drawer-tree .json-value')?.classList.contains('long-value')).toBe(false);
     expect(document.querySelector<HTMLElement>('.t-drawer__content-wrapper')?.style.width).toBe('66.6667vw');
@@ -122,14 +126,16 @@ describe('React webview app', () => {
     const view = await screen.findByRole('button', { name: 'View' });
     await userEvent.click(view);
     expect(await screen.findByText('Full Content')).toBeTruthy();
-    await userEvent.click(screen.getByRole('button', { name: 'Copy Content' }));
+    const copyContent = screen.getByRole('button', { name: 'Copy Content' });
+    expect(copyContent.closest('.t-drawer__header')).toBeTruthy();
+    await userEvent.click(copyContent);
     expect(bridge.messages).toContainEqual({ type: 'copy', text: completeText });
   });
 
   it('shows row and cell copy actions only for JSONL table cells', async () => {
     render(<App />);
     window.dispatchEvent(new MessageEvent('message', { data: {
-      type: 'init', summary: { kind: 'jsonl', revision: 'menus', byteLength: 20, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['name'], locale: 'en' }, uiState: {}
+      type: 'init', summary: { kind: 'jsonl', revision: 'menus', byteLength: 20, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['name', 'missing'], locale: 'en' }, uiState: {}
     } }));
     const request = await waitFor(() => {
       const found = bridge.messages.findLast((message) => message.type === 'page');
@@ -144,8 +150,24 @@ describe('React webview app', () => {
 
     fireEvent.contextMenu(await screen.findByText('Ada'));
     expect(screen.getByRole('menuitem', { name: 'Copy Row' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' }).querySelector('.t-icon-tab')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' }).querySelector('.t-icon-tab')).toBeTruthy();
+    expect(screen.getAllByRole('menuitem')).not.toContain(document.activeElement);
     await userEvent.click(screen.getByRole('menuitem', { name: 'Copy Cell' }));
     expect(bridge.messages).toContainEqual({ type: 'copy', text: 'Ada' });
+
+    fireEvent.contextMenu(screen.getByText('Ada'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' }));
+    expect(bridge.messages).toContainEqual({ type: 'openTemp', physicalLine: 1, field: 'name' });
+
+    fireEvent.contextMenu(screen.getByText('Ada'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' }));
+    expect(bridge.messages).toContainEqual({ type: 'openTemp', physicalLine: 1 });
+
+    fireEvent.contextMenu(screen.getByText('—'));
+    expect(screen.getByRole('menuitem', { name: 'Copy Cell' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' })).toBeTruthy();
 
     expect(fireEvent.contextMenu(document.querySelector('main')!)).toBe(false);
     expect(screen.queryByRole('menu')).toBeNull();
@@ -217,6 +239,21 @@ describe('React webview app', () => {
     expect(bridge.messages.some((message) => message.type === 'children')).toBe(false);
     await userEvent.click(screen.getByText('Load more (1/1000)'));
     expect(bridge.messages).toContainEqual(expect.objectContaining({ type: 'children', nodeId: 'root', offset: 1 }));
+  });
+
+  it('uses distinct icons for property, value, JSONPath, and temporary-tab actions', async () => {
+    render(<App />);
+    const root = { nodeId: 'root', type: 'object', offset: 0, length: 12, childrenCount: 1, pointer: '', jsonPath: '@' };
+    const child = { nodeId: 'child', key: 'answer', type: 'number', offset: 10, length: 2, childrenCount: 0, pointer: '/answer', jsonPath: '@.answer', displayValue: '42', rawText: '42' };
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'json', revision: 'menu-icons', byteLength: 12, parseMilliseconds: 1, errors: 0, root, children: [child], locale: 'en' }, uiState: {}
+    } }));
+
+    fireEvent.contextMenu(await screen.findByText('42'));
+    expect(screen.getByRole('menuitem', { name: 'Copy Property Name' }).querySelector('.t-icon-key')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Copy Value' }).querySelector('.t-icon-copy')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Copy JSONPath' }).querySelector('.t-icon-code')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab' }).querySelector('.t-icon-tab')).toBeTruthy();
   });
 
   it('renders nested children as soon as their async page arrives', async () => {

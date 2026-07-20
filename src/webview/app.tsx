@@ -8,7 +8,9 @@ import CodeIcon from 'tdesign-icons-react/esm/components/code';
 import CopyIcon from 'tdesign-icons-react/esm/components/copy';
 import FileExportIcon from 'tdesign-icons-react/esm/components/file-export';
 import FormatPainterIcon from 'tdesign-icons-react/esm/components/format-painter';
+import KeyIcon from 'tdesign-icons-react/esm/components/key';
 import SearchIcon from 'tdesign-icons-react/esm/components/search';
+import TabIcon from 'tdesign-icons-react/esm/components/tab';
 import ToolsIcon from 'tdesign-icons-react/esm/components/tools';
 import { BrandIcon } from './brandIcon';
 import type { JsonNodeView, JsonlRow } from '../shared/types.js';
@@ -70,6 +72,10 @@ interface MenuItem { label: string; action(): void; icon?: ReactNode }
 interface MenuState { x: number; y: number; items: MenuItem[] }
 interface DrawerState { title: string; value?: unknown; text?: string; actions?: ReactNode; physicalLine?: number; loading?: boolean }
 
+function DrawerHeader({ title, actions }: { title: string; actions?: ReactNode }): ReactNode {
+  return <div className="drawer-header-content"><span className="drawer-title">{title}</span>{actions && <div className="drawer-header-actions">{actions}</div>}</div>;
+}
+
 function ContextMenu({ menu, close }: { menu: MenuState; close(): void }): ReactNode {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -80,12 +86,13 @@ function ContextMenu({ menu, close }: { menu: MenuState; close(): void }): React
       const buttons = [...(ref.current?.querySelectorAll<HTMLButtonElement>('button') ?? [])];
       if (!buttons.length) return;
       event.preventDefault();
-      const current = Math.max(0, buttons.indexOf(document.activeElement as HTMLButtonElement));
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : current < 0 ? (event.key === 'ArrowDown' ? 0 : buttons.length - 1)
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
       buttons[next]?.focus();
     };
     document.addEventListener('mousedown', onPointer); document.addEventListener('keydown', onKey);
-    ref.current?.querySelector<HTMLButtonElement>('button')?.focus();
     return () => { document.removeEventListener('mousedown', onPointer); document.removeEventListener('keydown', onKey); };
   }, [close]);
   const style: CSSProperties = { left: Math.max(8, Math.min(menu.x, innerWidth - 228)), top: Math.max(8, Math.min(menu.y, innerHeight - menu.items.length * 38 - 16)) };
@@ -300,7 +307,7 @@ function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
 
 function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
   state: AppState; onSort(field?: string, direction?: 'asc' | 'desc'): void; onPage(offset: number): void; onRecord(row: JsonlRow): void;
-  onCellMenu(event: React.MouseEvent, row: JsonlRow, cellText: string): void;
+  onCellMenu(event: React.MouseEvent, row: JsonlRow, cellValue: unknown, cellText: string, field?: string): void;
 }): ReactNode {
   const summary = state.summary!;
   const all = summary.fields ?? ['$'];
@@ -318,11 +325,11 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
   };
   const columns: Array<PrimaryTableCol<JsonlRow>> = [{
     colKey: PHYSICAL_LINE_SORT, title: '#', width: 68, fixed: 'left', sorter: true,
-    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(PHYSICAL_LINE_SORT), title: tr('originalOrder'), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(PHYSICAL_LINE_SORT); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, String(row.physicalLine)) },
+    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(PHYSICAL_LINE_SORT), title: tr('originalOrder'), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(PHYSICAL_LINE_SORT); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.physicalLine, String(row.physicalLine)) },
     cell: ({ row }) => <button type="button" className="line-link" title={tr('sourceLine')} onClick={(event) => { event.stopPropagation(); send({ type: 'revealLine', line: row.physicalLine }); }}>{row.physicalLine}</button>
   }, ...fields.map((field): PrimaryTableCol<JsonlRow> => ({
     colKey: field, title: field, width: 180, ellipsis: true, sorter: true,
-    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(field), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(field); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, displayValue(row.cells[field], summary).text) },
+    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(field), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(field); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.cells[field], displayValue(row.cells[field], summary).text, field) },
     cell: ({ row }) => { const shown = displayValue(row.cells[field], summary); return <span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span>; }
   }))];
   const displayedSort: TableSort = { sortBy: currentSort?.field ?? PHYSICAL_LINE_SORT, descending: currentSort?.direction === 'desc' };
@@ -371,7 +378,7 @@ export function App(): ReactNode {
   const recordDrawer = useCallback((physicalLine: number, text: string): DrawerState => ({
     title: tr('line', { line: physicalLine }), physicalLine,
     value: (() => { try { return JSON.parse(text) as unknown; } catch { return undefined; } })(), text,
-    actions: <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(text)}>{tr('copyLine')}</Button><Button size="small" variant="outline" onClick={() => send({ type: 'openTemp', text })}>{tr('tempTab')}</Button></>
+    actions: <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(text)}>{tr('copyLine')}</Button><Button size="small" variant="outline" icon={<TabIcon />} onClick={() => send({ type: 'openTemp', text })}>{tr('tempTab')}</Button></>
   }), [copied]);
 
   useEffect(() => {
@@ -443,29 +450,33 @@ export function App(): ReactNode {
 
   const onServerMenu = useCallback((event: React.MouseEvent, node: JsonNodeView) => {
     const items: MenuItem[] = [
-      ...(node.key !== undefined ? [{ label: tr('copyKey'), icon: <CopyIcon />, action: () => copied(String(node.key)) }] : []),
+      ...(node.key !== undefined ? [{ label: tr('copyKey'), icon: <KeyIcon />, action: () => copied(String(node.key)) }] : []),
       ...(node.childrenCount === 0 ? [{ label: tr('copyValue'), icon: <CopyIcon />, action: () => copied(node.displayValue ?? '') }] : []),
       { label: tr('copyJson'), icon: <CopyIcon />, action: () => { send({ type: 'copy', nodeId: node.nodeId, format: 'pretty' }); announce(tr('copied')); } },
       { label: tr('copyPath'), icon: <CodeIcon />, action: () => copied(node.jsonPath) },
-      { label: tr('openTemp'), icon: <CodeIcon />, action: () => node.type === 'string' && node.displayValue !== undefined ? send({ type: 'openTemp', text: temporaryText(node.displayValue) }) : send({ type: 'openTemp', nodeId: node.nodeId }) }
+      { label: tr('openTemp'), icon: <TabIcon />, action: () => node.type === 'string' && node.displayValue !== undefined ? send({ type: 'openTemp', text: temporaryText(node.displayValue) }) : send({ type: 'openTemp', nodeId: node.nodeId }) }
     ];
     setMenu({ x: event.clientX, y: event.clientY, items });
   }, [announce, copied]);
 
   const onValueMenu = useCallback((event: React.MouseEvent, key: string | undefined, value: unknown, path?: string) => {
     const items: MenuItem[] = [
-      ...(key !== undefined ? [{ label: tr('copyKey'), icon: <CopyIcon />, action: () => copied(key) }] : []),
+      ...(key !== undefined ? [{ label: tr('copyKey'), icon: <KeyIcon />, action: () => copied(key) }] : []),
       { label: tr('copyValue'), icon: <CopyIcon />, action: () => copied(typeof value === 'string' ? value : jsonText(value)) },
       ...(path !== undefined ? [{ label: tr('copyPath'), icon: <CodeIcon />, action: () => copied(path) }] : []),
-      { label: tr('openTemp'), icon: <CodeIcon />, action: () => send({ type: 'openTemp', text: temporaryText(value) }) }
+      { label: tr('openTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', text: temporaryText(value) }) }
     ];
     setMenu({ x: event.clientX, y: event.clientY, items });
   }, [copied]);
-  const onCellMenu = useCallback((event: React.MouseEvent, row: JsonlRow, cellText: string) => {
+  const onCellMenu = useCallback((event: React.MouseEvent, row: JsonlRow, cellValue: unknown, cellText: string, field?: string) => {
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, items: [
       { label: tr('copyLine'), icon: <CopyIcon />, action: () => copied(row.raw) },
-      { label: tr('copyCell'), icon: <CopyIcon />, action: () => copied(cellText) }
+      { label: tr('copyCell'), icon: <CopyIcon />, action: () => copied(cellText) },
+      { label: tr('openRowTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', physicalLine: row.physicalLine }) },
+      ...(cellValue !== undefined ? [{ label: tr('openCellTemp'), icon: <TabIcon />, action: () => field
+        ? send({ type: 'openTemp', physicalLine: row.physicalLine, field })
+        : send({ type: 'openTemp', text: temporaryText(cellValue) }) }] : [])
     ] });
   }, [copied]);
   const openLongText = useCallback((text: string) => setFullText(text), []);
@@ -508,16 +519,14 @@ export function App(): ReactNode {
       ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} />
       : <JsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} />}
     {menu && <ContextMenu menu={menu} close={() => setMenu(undefined)} />}
-    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer?.title} footer={false} showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setDrawer(undefined)}>
+    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={drawer.actions} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setDrawer(undefined)}>
       {drawer && <div className="drawer-content">
-        {drawer.actions && <div className="drawer-actions">{drawer.actions}</div>}
         {drawer.loading ? <div className="drawer-loading"><span className="loading-spinner" aria-hidden /><span>{tr('loading')}</span></div>
           : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openLongText} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
       </div>}
     </Drawer>
-    <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={tr('fullContent')} footer={false} showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setFullText(undefined)}>
+    <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setFullText(undefined)}>
       {fullText !== undefined && <div className="drawer-content">
-        <div className="drawer-actions"><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button></div>
         <pre className="text-viewer">{fullText}</pre>
       </div>}
     </Drawer>
