@@ -341,12 +341,22 @@ export class JsonlIndex {
       const lineIndex = queryRows[position]!;
       const parsed = await this.parseLine(lineIndex);
       const meta = this.lines.get(lineIndex);
-      const raw = parsed.raw.length > 16_384 ? `${parsed.raw.slice(0, 16_384)}…` : parsed.raw;
+      const rawTruncated = parsed.raw.length > 16_384;
+      const raw = rawTruncated ? `${parsed.raw.slice(0, 16_384)}…` : parsed.raw;
       const cells = Object.fromEntries(Object.entries(parsed.cells).map(([key, value]) => [key, previewValue(value)]));
-      const row = { resultIndex: position + 1, physicalLine: meta.physicalLine, status: meta.status, raw, cells, ...(parsed.diagnostic ? { error: parsed.diagnostic } : {}) } satisfies JsonlRow;
+      const row = { resultIndex: position + 1, physicalLine: meta.physicalLine, status: meta.status, raw, ...(rawTruncated ? { rawTruncated: true } : {}), cells, ...(parsed.diagnostic ? { error: parsed.diagnostic } : {}) } satisfies JsonlRow;
       const size = Buffer.byteLength(JSON.stringify(row)); if (result.length && estimatedBytes + size > 900 * 1024) break; estimatedBytes += size; result.push(row);
     }
     return result;
+  }
+
+  async recordText(physicalLine: number): Promise<string> {
+    await this.ensureSourceUnchanged();
+    const meta = this.lines.get(physicalLine - 1);
+    let raw = new TextDecoder().decode(await this.bytes(meta));
+    if (physicalLine === 1 && raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
+    await this.ensureSourceUnchanged();
+    return raw;
   }
 
   async export(queryId: string, format: 'jsonl' | 'json', maxBytes: number): Promise<string> {

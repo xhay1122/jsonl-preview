@@ -22,6 +22,14 @@ describe('webview drawer styles', () => {
     expect(declarations('.t-drawer__body')).toMatch(/overflow:\s*auto/);
     expect(declarations('.t-drawer__body')).toMatch(/min-height:\s*0/);
   });
+
+  it('wraps complete short values while keeping the long-value action on one line', () => {
+    expect(declarations('.drawer-tree .tree-row')).toMatch(/align-items:\s*flex-start/);
+    expect(declarations('.drawer-tree .json-value:not(.long-value)')).toMatch(/white-space:\s*pre-wrap/);
+    expect(declarations('.drawer-tree .json-value:not(.long-value)')).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(declarations('.inline-action')).toMatch(/flex:\s*0 0 auto/);
+    expect(declarations('.inline-action')).toMatch(/white-space:\s*nowrap/);
+  });
 });
 
 describe('webview JSONL grid styles', () => {

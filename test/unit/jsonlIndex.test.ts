@@ -89,6 +89,17 @@ describe('JSONL index', () => {
     await index.openText('{"long":"value"}\n{"x":1}');
     expect((await index.page('default', 0, 2))[0]?.status).toBe('tooLarge');
   });
+  it('keeps page payloads bounded and retrieves a complete large record on demand', async () => {
+    const content = 'x'.repeat(20_000);
+    const raw = JSON.stringify({ content });
+    const index = new JsonlIndex(defaultSettings);
+    await index.openText(raw);
+    const row = (await index.page('default', 0, 1))[0]!;
+    expect(row.rawTruncated).toBe(true);
+    expect(row.raw.length).toBeLessThan(raw.length);
+    expect(await index.recordText(1)).toBe(raw);
+    await index.close();
+  });
   it('rejects pages after a streamed source changes', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'jsonl-preview-source-'));
     const path = join(directory, 'data.jsonl');

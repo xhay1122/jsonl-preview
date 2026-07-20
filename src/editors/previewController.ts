@@ -28,7 +28,7 @@ function validMessage(value: unknown): value is WebviewMessage {
   if (!value || typeof value !== 'object') return false;
   try { if (JSON.stringify(value).length > 64 * 1024) return false; } catch { return false; }
   const message = value as Record<string, unknown>;
-  return typeof message.type === 'string' && ['ready', 'children', 'page', 'query', 'jsonSearch', 'revealLine', 'copy', 'openTemp', 'openSource', 'format', 'repair', 'export', 'persist'].includes(message.type);
+  return typeof message.type === 'string' && ['ready', 'children', 'page', 'record', 'query', 'jsonSearch', 'revealLine', 'copy', 'openTemp', 'openSource', 'format', 'repair', 'export', 'persist'].includes(message.type);
 }
 
 export class PreviewController implements vscode.Disposable {
@@ -105,6 +105,12 @@ export class PreviewController implements vscode.Disposable {
         const data = await this.client.request({ type: 'jsonl/getPage', sessionId: session.id, revision: session.revision, queryId: this.currentQueryId, queryRevision, offset, limit: this.settings.pageSize });
         if (this.session !== session || this.disposed) return;
         await this.panel.webview.postMessage({ type: 'page', ...data, offset, queryRevision });
+      } else if (message.type === 'record') {
+        const physicalLine = Number.isSafeInteger(message.physicalLine) ? Number(message.physicalLine) : 0;
+        if (physicalLine < 1) return;
+        const data = await this.client.request({ type: 'jsonl/getRecord', sessionId: session.id, revision: session.revision, physicalLine }) as { content: string };
+        if (this.session !== session || this.disposed) return;
+        await this.panel.webview.postMessage({ type: 'record', physicalLine, content: data.content });
       } else if (message.type === 'query') {
         const queryRevision = Number.isInteger(message.queryRevision) ? Number(message.queryRevision) : 0;
         if (queryRevision < this.currentQueryRevision) return;

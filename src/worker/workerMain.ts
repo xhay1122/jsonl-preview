@@ -81,6 +81,9 @@ parentPort.on('message', async (value: unknown) => {
       const rows = await session.jsonl.page(request.queryId, request.offset, request.limit);
       const total = session.jsonl.total(request.queryId);
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { rows, total, scannedRows: session.jsonl.lineCount, matchedRows: total, isComplete: true } });
+    } else if (request.type === 'jsonl/getRecord') {
+      if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
+      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: await session.jsonl.recordText(request.physicalLine) } });
     } else if (request.type === 'jsonl/applyQuery') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       session.cancelled.delete(request.requestId); session.activeQueries.add(request.requestId);

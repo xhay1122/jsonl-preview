@@ -87,10 +87,43 @@ describe('React webview app', () => {
     expect(screen.getByRole('searchbox')).toBeTruthy();
     expect(screen.getByRole('grid')).toBeTruthy();
     expect(await screen.findByText('第 1 行')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '临时 Tab 打开' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '查看' })).toBeNull();
+    expect(document.querySelector('.drawer-tree .json-value')?.classList.contains('long-value')).toBe(false);
+    expect(document.querySelector<HTMLElement>('.t-drawer__content-wrapper')?.style.width).toBe('66.6667vw');
     const mask = document.querySelector<HTMLElement>('.t-drawer__mask');
     expect(mask).toBeTruthy();
     await userEvent.click(mask!);
     await waitFor(() => expect(document.querySelector('.t-drawer')).toBeNull());
+  });
+
+  it('loads a complete large record and opens long text in a copyable second drawer', async () => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'jsonl', revision: 'large-row', byteLength: 30_000, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['content'], locale: 'en' }, uiState: {}
+    } }));
+    const pageRequest = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page', rows: [{ resultIndex: 1, physicalLine: 7, status: 'valid', raw: '{"content":"partial…', rawTruncated: true, cells: { content: 'large preview' } }],
+      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      queryRevision: pageRequest && 'queryRevision' in pageRequest ? pageRequest.queryRevision : 1
+    } }));
+
+    await userEvent.click(await screen.findByText('large preview'));
+    expect(bridge.messages).toContainEqual({ type: 'record', physicalLine: 7 });
+    expect(await screen.findByText('Loading…')).toBeTruthy();
+
+    const completeText = 'complete text '.repeat(20);
+    window.dispatchEvent(new MessageEvent('message', { data: { type: 'record', physicalLine: 7, content: JSON.stringify({ content: completeText }) } }));
+    const view = await screen.findByRole('button', { name: 'View' });
+    await userEvent.click(view);
+    expect(await screen.findByText('Full Content')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Copy Content' }));
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: completeText });
   });
 
   it('shows row and cell copy actions only for JSONL table cells', async () => {

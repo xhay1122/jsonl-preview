@@ -7,6 +7,8 @@ describe('worker protocol validation', () => {
     expect(validateWorkerRequest({ type: 'jsonl/getPage', requestId: '1', sessionId: 's', revision: 'r', queryId: 'default', queryRevision: 0, offset: 0, limit: 1000 })).toBe(true);
     expect(validateWorkerRequest({ type: 'jsonl/getPage', requestId: '1', sessionId: 's', revision: 'r', queryId: 'default', queryRevision: 0, offset: 0, limit: 1001 })).toBe(false);
     expect(validateWorkerRequest({ type: 'session/openText', requestId: '1', sessionId: 's', revision: 'r', kind: 'json', chunks: ['x'.repeat(256 * 1024 + 1)], settings: defaultSettings })).toBe(false);
+    expect(validateWorkerRequest({ type: 'jsonl/getRecord', requestId: '1', sessionId: 's', revision: 'r', physicalLine: 1 })).toBe(true);
+    expect(validateWorkerRequest({ type: 'jsonl/getRecord', requestId: '1', sessionId: 's', revision: 'r', physicalLine: 0 })).toBe(false);
   });
   it('rejects unsupported native regular-expression filters', () => {
     expect(validateWorkerRequest({ type: 'jsonl/applyQuery', requestId: '1', sessionId: 's', revision: 'r', queryId: 'q', queryRevision: 1, filter: { op: 'regex', path: '/x', value: '(a|aa)+$' } })).toBe(false);

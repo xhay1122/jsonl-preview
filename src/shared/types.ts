@@ -63,6 +63,8 @@ export interface JsonlRow {
   physicalLine: number;
   status: LineMeta['status'];
   raw: string;
+  /** The page response contains only a preview; fetch the physical line before using it. */
+  rawTruncated?: boolean;
   cells: Record<string, unknown>;
   error?: Diagnostic;
 }
