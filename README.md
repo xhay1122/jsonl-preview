@@ -29,3 +29,9 @@ The preview does not execute workspace code or upload file content. Source chang
 输入普通文本可以搜索 JSON 中的标量值；在 JSONL 预览中，则会筛选出匹配的记录。也可以使用 `users[?active].name` 等 JMESPath 表达式进行投影和结构化记录筛选。右键单击节点，可以复制数据或可直接复用、兼容 JMESPath 的 JSONPath；JSONL 行详情也支持相同操作。
 
 本插件不会执行工作区代码，也不会上传文件内容。对源文件的修改均通过 VS Code 编辑操作应用，并且可以撤销。
+
+## Demo
+
+![](./docs/img/json-preview.png)
+
+![](./docs/img/jsonl-preview.png)
