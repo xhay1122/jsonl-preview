@@ -1,11 +1,17 @@
 import * as esbuild from 'esbuild';
 import postcss from 'postcss';
 import tailwindcss from '@tailwindcss/postcss';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 
 const watch = process.argv.includes('--watch');
 const analyze = process.argv.includes('--analyze');
-const common = { bundle: true, sourcemap: true, minify: false, logLevel: 'info', mainFields: ['module', 'main'] };
+const common = { bundle: true, sourcemap: watch, minify: false, logLevel: 'info', mainFields: ['module', 'main'] };
+const sourceMaps = [
+  'dist/extension.js.map',
+  'dist/worker.js.map',
+  'dist/webview.js.map',
+  'dist/webview.css.map'
+];
 const tailwindPlugin = {
   name: 'tailwind-css',
   setup(build) {
@@ -16,6 +22,9 @@ const tailwindPlugin = {
     });
   }
 };
+if (!watch) {
+  await Promise.all(sourceMaps.map((sourceMap) => rm(sourceMap, { force: true })));
+}
 const extension = {
   ...common, platform: 'node', format: 'cjs', target: 'node20',
   entryPoints: ['src/extension.ts'], outfile: 'dist/extension.js', external: ['vscode']

@@ -2,7 +2,7 @@
   "name": "json-jsonl-preview",
   "displayName": "JSON / JSONL Preview",
   "description": "Fast, safe previews for JSON and JSON Lines files.",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "publisher": "xhay",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -31,11 +31,15 @@
   "files": [
     "dist",
     "assets",
+    "docs/img",
     "package.nls.json",
     "package.nls.zh-cn.json",
     "README.md",
     "LICENSE"
   ],
+  "vsce": {
+    "githubBranch": "master"
+  },
   "activationEvents": [
     "onCustomEditor:jsonlPreview.text",
     "onCustomEditor:jsonlPreview.large",
