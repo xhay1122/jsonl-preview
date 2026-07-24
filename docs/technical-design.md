@@ -347,32 +347,31 @@ Webview 只提交“应用修复”“格式化”等意图，不提交任意文
 
 | 配置项 | 默认值 | 说明 |
 | --- | ---: | --- |
+| `jsonlPreview.showEditorTitleIcon` | `true` | 是否在编辑器标题栏显示预览入口 |
 | `jsonlPreview.json.indent` | `2` | JSON 格式化缩进 |
 | `jsonlPreview.json.allowComments` | `false` | 是否按 JSONC 容错读取 |
 | `jsonlPreview.json.allowTrailingComma` | `false` | 是否允许 JSONC 尾随逗号 |
 | `jsonlPreview.json.maxAutoExpandDepth` | `10` | JSON 树自动展开的最大层数；更深节点仍可手动展开 |
 | `jsonlPreview.jsonl.pageSize` | `1000` | 单页记录数 |
 | `jsonlPreview.jsonl.schemaSampleSize` | `1000` | 字段推断采样数 |
-| `jsonlPreview.largeFileThresholdMB` | `50` | 启用大文件模式阈值 |
+| `jsonlPreview.jsonl.ignoreEmptyLines` | `true` | 是否忽略空白物理行；关闭后按错误行显示 |
+| `jsonlPreview.largeFileThresholdMB` | `50` | 本地、未修改的 JSONL/NDJSON 启用只读流式模式的阈值；不适用于 JSON |
 | `jsonlPreview.normalModeMaxFileMB` | `100` | 需要完整 `TextDocument`/整文件读取时的默认上限 |
 | `jsonlPreview.maxLineLengthMB` | `5` | 单行完整解析上限 |
-| `jsonlPreview.maxSortableRows` | `1000000` | 内存内稳定排序的默认记录上限 |
-| `jsonlPreview.queryCacheMB` | `128` | 查询结果、位图和排序 key 的总缓存预算 |
-| `jsonlPreview.schema.remote.enabled` | `false` | 是否允许通过 HTTPS 获取远程 schema |
-| `jsonlPreview.timezone` | `system` | 时间展示时区 |
-| `jsonlPreview.dateFormat` | `auto` | 时间显示格式 |
-| `jsonlPreview.redaction.enabled` | `false` | 是否启用敏感字段遮罩 |
+| `jsonlPreview.maxSortableRows` | `1000000` | 按字段稳定排序的已索引物理行数上限 |
+| `jsonlPreview.queryCacheMB` | `128` | 行索引、查询结果和排序数据的内存预算 |
+| `jsonlPreview.timezone` | `system` | 时间展示时区，可使用 IANA 时区名称 |
 
-建议命令：
+`largeFileThresholdMB` 应不大于 `normalModeMaxFileMB`，否则介于两者之间的 JSONL/NDJSON 文件既无法进入流式模式，也会超过普通模式上限。配置在打开预览时读取，修改后需要重新打开预览。
+
+当前命令：
 
 - `JSON(L) Preview: Open Preview`
 - `JSON Preview: Format Document`
 - `JSON Preview: Diagnose and Repair`
-- `JSON Preview: Copy Key / Value / Path`
-- `JSONL Preview: Focus Filter`
-- `JSONL Preview: Show Current Line`
 - `JSONL Preview: Export Filtered Records`
 - `JSON(L) Preview: Convert Format`
+- `JSON(L) Preview: Preview Selection`
 - `JSON(L) Preview: Reset View State`
 
 ## 9. 状态与错误处理

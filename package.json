@@ -2,7 +2,7 @@
   "name": "json-jsonl-preview",
   "displayName": "JSON / JSONL Preview",
   "description": "Fast, safe previews for JSON and JSON Lines files.",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "xhay",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -145,75 +145,83 @@
           "type": "number",
           "default": 2,
           "minimum": 1,
-          "maximum": 8
+          "maximum": 8,
+          "description": "%configuration.json.indent.description%"
         },
         "jsonlPreview.json.allowComments": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "%configuration.json.allowComments.description%"
         },
         "jsonlPreview.json.allowTrailingComma": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "%configuration.json.allowTrailingComma.description%"
         },
         "jsonlPreview.json.maxAutoExpandDepth": {
           "type": "number",
           "default": 10,
           "minimum": 1,
           "maximum": 100,
-          "description": "Maximum number of JSON tree levels expanded automatically. Deeper nodes remain available for manual expansion."
+          "description": "%configuration.json.maxAutoExpandDepth.description%"
         },
         "jsonlPreview.jsonl.pageSize": {
           "type": "number",
           "default": 1000,
           "minimum": 20,
-          "maximum": 1000
+          "maximum": 1000,
+          "description": "%configuration.jsonl.pageSize.description%"
         },
         "jsonlPreview.jsonl.schemaSampleSize": {
           "type": "number",
           "default": 1000,
           "minimum": 10,
-          "maximum": 10000
+          "maximum": 10000,
+          "description": "%configuration.jsonl.schemaSampleSize.description%"
         },
         "jsonlPreview.jsonl.ignoreEmptyLines": {
           "type": "boolean",
-          "default": true
+          "default": true,
+          "description": "%configuration.jsonl.ignoreEmptyLines.description%"
         },
         "jsonlPreview.largeFileThresholdMB": {
           "type": "number",
           "default": 50,
-          "minimum": 1
+          "minimum": 1,
+          "description": "%configuration.largeFileThresholdMB.description%"
         },
         "jsonlPreview.normalModeMaxFileMB": {
           "type": "number",
           "default": 100,
           "minimum": 1,
-          "maximum": 1024
+          "maximum": 1024,
+          "description": "%configuration.normalModeMaxFileMB.description%"
         },
         "jsonlPreview.maxLineLengthMB": {
           "type": "number",
           "default": 5,
           "minimum": 0.1,
-          "maximum": 1024
+          "maximum": 1024,
+          "description": "%configuration.maxLineLengthMB.description%"
         },
         "jsonlPreview.maxSortableRows": {
           "type": "number",
           "default": 1000000,
           "minimum": 1000,
-          "maximum": 100000000
+          "maximum": 100000000,
+          "description": "%configuration.maxSortableRows.description%"
         },
         "jsonlPreview.queryCacheMB": {
           "type": "number",
           "default": 128,
           "minimum": 8,
-          "maximum": 4096
+          "maximum": 4096,
+          "description": "%configuration.queryCacheMB.description%"
         },
         "jsonlPreview.timezone": {
           "type": "string",
-          "default": "system"
-        },
-        "jsonlPreview.dateFormat": {
-          "type": "string",
-          "default": "auto"
+          "default": "system",
+          "description": "%configuration.timezone.description%"
         }
       }
     }

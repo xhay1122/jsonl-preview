@@ -8,5 +8,18 @@
   "command.export": "JSONL Preview: Export Filtered Records",
   "command.convert": "JSON(L) Preview: Convert Format",
   "command.reset": "JSON(L) Preview: Reset View State",
-  "configuration.showEditorTitleIcon.description": "Show the JSON(L) Preview icon in the editor title bar for JSON, JSONL, NDJSON, and untitled files."
+  "configuration.showEditorTitleIcon.description": "Show the JSON(L) Preview icon in the editor title bar for JSON, JSONL, NDJSON, and untitled files.",
+  "configuration.json.indent.description": "Number of spaces used by JSON formatting.",
+  "configuration.json.allowComments.description": "Allow JavaScript-style comments while parsing JSON previews. This does not affect JSONL or NDJSON.",
+  "configuration.json.allowTrailingComma.description": "Allow trailing commas while parsing JSON previews. This does not affect JSONL or NDJSON.",
+  "configuration.json.maxAutoExpandDepth.description": "Maximum number of JSON tree levels expanded automatically. Deeper nodes remain available for manual expansion.",
+  "configuration.jsonl.pageSize.description": "Number of JSONL or NDJSON records requested per page.",
+  "configuration.jsonl.schemaSampleSize.description": "Number of initial JSONL or NDJSON records sampled to discover table columns.",
+  "configuration.jsonl.ignoreEmptyLines.description": "Ignore blank and whitespace-only physical lines. When disabled, each empty line is shown as an error row.",
+  "configuration.largeFileThresholdMB.description": "Use the read-only streaming preview above this size for clean local JSONL and NDJSON files. JSON files always use normal mode.",
+  "configuration.normalModeMaxFileMB.description": "Maximum file size loaded completely in normal mode. Also limits conversion and some non-file exports.",
+  "configuration.maxLineLengthMB.description": "Maximum JSONL or NDJSON line size parsed completely. Longer lines are shown as errors with a truncated preview.",
+  "configuration.maxSortableRows.description": "Maximum number of indexed physical lines allowed for field sorting. Original-order sorting remains available.",
+  "configuration.queryCacheMB.description": "Memory budget for the JSONL line index, query results, and sorting data. Larger files or broad filters may require a higher value.",
+  "configuration.timezone.description": "Time zone used to display recognized timestamps. Use \"system\" or an IANA name such as \"Asia/Shanghai\"."
 }

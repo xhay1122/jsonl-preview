@@ -8,5 +8,18 @@
   "command.export": "JSONL 预览: 导出筛选记录",
   "command.convert": "JSON(L) 预览: 转换格式",
   "command.reset": "JSON(L) 预览: 重置视图状态",
-  "configuration.showEditorTitleIcon.description": "在 JSON、JSONL、NDJSON 和未命名文件的编辑器标题栏中显示 JSON(L) 预览图标。"
+  "configuration.showEditorTitleIcon.description": "在 JSON、JSONL、NDJSON 和未命名文件的编辑器标题栏中显示 JSON(L) 预览图标。",
+  "configuration.json.indent.description": "JSON 格式化使用的空格数。",
+  "configuration.json.allowComments.description": "解析 JSON 预览时允许 JavaScript 风格注释；不影响 JSONL 或 NDJSON。",
+  "configuration.json.allowTrailingComma.description": "解析 JSON 预览时允许尾随逗号；不影响 JSONL 或 NDJSON。",
+  "configuration.json.maxAutoExpandDepth.description": "JSON 树自动展开的最大层数；更深的节点仍可手动展开。",
+  "configuration.jsonl.pageSize.description": "每页请求的 JSONL 或 NDJSON 记录数。",
+  "configuration.jsonl.schemaSampleSize.description": "用于发现表格列的前置 JSONL 或 NDJSON 记录采样数。",
+  "configuration.jsonl.ignoreEmptyLines.description": "忽略空白物理行。关闭后，每个空白行都会显示为错误行。",
+  "configuration.largeFileThresholdMB.description": "没有未保存修改的本地 JSONL 和 NDJSON 文件超过此大小时使用只读流式预览；JSON 始终使用普通模式。",
+  "configuration.normalModeMaxFileMB.description": "普通模式完整加载文件的大小上限，同时限制格式转换和部分非本地导出。",
+  "configuration.maxLineLengthMB.description": "完整解析 JSONL 或 NDJSON 单行内容的大小上限；超长行会显示为错误并仅提供截断预览。",
+  "configuration.maxSortableRows.description": "允许按字段排序的已索引物理行数上限；按原始顺序排序不受此限制。",
+  "configuration.queryCacheMB.description": "JSONL 行索引、查询结果和排序数据的内存预算；大文件或宽泛筛选可能需要提高此值。",
+  "configuration.timezone.description": "识别到时间戳后用于显示的时区。可设为 \"system\" 或 \"Asia/Shanghai\" 等 IANA 时区名称。"
 }
