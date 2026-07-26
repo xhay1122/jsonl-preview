@@ -19,6 +19,9 @@
   --td-bg-color-container: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   --td-bg-color-container-hover: var(--vscode-list-hoverBackground);
   --td-bg-color-container-active: var(--vscode-list-activeSelectionBackground);
+  --td-bg-color-secondarycontainer: var(--surface);
+  --td-bg-color-secondarycontainer-hover: var(--vscode-list-hoverBackground);
+  --td-bg-color-secondarycontainer-active: var(--vscode-list-activeSelectionBackground);
   --td-bg-color-component: var(--vscode-input-background);
   --td-bg-color-component-hover: var(--vscode-list-hoverBackground);
   --td-text-color-primary: var(--vscode-editor-foreground);
@@ -107,7 +110,8 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
    second scrollbar above the body scrollbar. */
 .jsonl-table .t-table__affixed-header-elm { overflow-x: hidden; scrollbar-width: none; }
 .jsonl-table .t-table__affixed-header-elm::-webkit-scrollbar { width: 0; height: 0; }
-.jsonl-table .t-table__header th { height: 36px; color: var(--vscode-editor-foreground); background: var(--surface); }
+.jsonl-table .t-table__header th,
+.jsonl-table .t-table__header.t-table__header--fixed > tr > th { height: 36px; color: var(--vscode-editor-foreground); background: var(--surface); }
 .jsonl-table .t-table__body td { height: 34px; padding-block: 5px; background: var(--surface-raised); cursor: pointer; }
 .jsonl-table .t-table__body tr:hover td { background: var(--vscode-list-hoverBackground); }
 .jsonl-table .t-table__sort-icon { visibility: visible; opacity: .48; }

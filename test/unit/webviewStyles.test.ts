@@ -39,6 +39,12 @@ describe('webview drawer styles', () => {
 });
 
 describe('webview JSONL grid styles', () => {
+  it('maps the fixed table header surface to the active VS Code theme', () => {
+    expect(declarations(':root')).toMatch(/--td-bg-color-secondarycontainer:\s*var\(--surface\)/);
+    expect(declarations(':root')).toMatch(/--td-bg-color-secondarycontainer-hover:\s*var\(--vscode-list-hoverBackground\)/);
+    expect(styles).toMatch(/\.jsonl-table \.t-table__header\.t-table__header--fixed > tr > th\s*\{[^}]*background:\s*var\(--surface\)/);
+  });
+
   it('uses a single remaining-height scroll area and shared row widths', () => {
     expect(declarations('.jsonl-layout')).toMatch(/height:\s*100vh/);
     expect(declarations('.grid')).toMatch(/height:\s*100%/);
