@@ -39,6 +39,10 @@ describe('webview drawer styles', () => {
 });
 
 describe('webview JSONL grid styles', () => {
+  it('uses the active editor background for the initial table loading overlay', () => {
+    expect(declarations(':root')).toMatch(/--td-mask-disabled:\s*color-mix\(in srgb,\s*var\(--vscode-editor-background\) 72%,\s*transparent\)/);
+  });
+
   it('maps the fixed table header surface to the active VS Code theme', () => {
     expect(declarations(':root')).toMatch(/--td-bg-color-secondarycontainer:\s*var\(--surface\)/);
     expect(declarations(':root')).toMatch(/--td-bg-color-secondarycontainer-hover:\s*var\(--vscode-list-hoverBackground\)/);

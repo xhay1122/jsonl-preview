@@ -15,6 +15,7 @@
   --td-brand-color-active: var(--vscode-button-background);
   --td-brand-color-focus: color-mix(in srgb, var(--vscode-focusBorder) 24%, transparent);
   --td-brand-color-disabled: color-mix(in srgb, var(--vscode-button-background) 45%, transparent);
+  --td-mask-disabled: color-mix(in srgb, var(--vscode-editor-background) 72%, transparent);
   --td-bg-color-page: var(--vscode-editor-background);
   --td-bg-color-container: var(--vscode-editorWidget-background, var(--vscode-editor-background));
   --td-bg-color-container-hover: var(--vscode-list-hoverBackground);
