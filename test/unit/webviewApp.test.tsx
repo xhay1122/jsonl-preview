@@ -41,7 +41,7 @@ describe('React webview app', () => {
 
     expect(await screen.findByText('JSONL Preview')).toBeTruthy();
     const input = screen.getByRole('searchbox');
-    expect(input.getAttribute('placeholder')).toBe('Filter rows by value or enter JMESPath');
+    expect(input.getAttribute('placeholder')).toBe("Filter rows by value or enter JMESPath, e.g. level == 'error'");
     await userEvent.type(input, 'active');
 
     await waitFor(() => expect(bridge.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'query', jmesPath: 'active' })])), { timeout: 1500 });
