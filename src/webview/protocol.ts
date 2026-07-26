@@ -5,6 +5,7 @@ export interface ViewState {
   /** null records an explicit choice to use the original JSONL line order. */
   sort?: SortState | null;
   columns?: string[];
+  columnWidths?: Record<string, number>;
 }
 
 export interface SortState {

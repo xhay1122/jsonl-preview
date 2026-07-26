@@ -9,6 +9,8 @@ describe('webview state reducer', () => {
   it('sanitizes persisted state before rendering', () => {
     expect(sanitizeViewState({ query: 42, sort: { field: [], direction: 'sideways' }, columns: ['ok', 1, 'x'.repeat(513)] })).toEqual({ columns: ['ok'] });
     expect(sanitizeViewState({ sort: null })).toEqual({ sort: null });
+    expect(sanitizeViewState({ columnWidths: { name: 243.6, tooSmall: 20, tooLarge: 1201, invalid: '180', [String('x').repeat(513)]: 180 } }))
+      .toEqual({ columnWidths: { name: 244 } });
   });
   it('rejects a page from an older query revision', () => {
     let state = reducer(createInitialState(), { type: 'init', summary });
@@ -23,6 +25,11 @@ describe('webview state reducer', () => {
     state = reducer(state, { type: 'setSort' });
     expect(state.view.sort).toBeNull();
     expect(state.view).toEqual({ sort: null });
+  });
+
+  it('stores resized JSONL column widths in the view state', () => {
+    const state = reducer(createInitialState(), { type: 'setColumnWidths', columnWidths: { name: 320 } });
+    expect(state.view.columnWidths).toEqual({ name: 320 });
   });
 
   it('clears a search error when the query changes', () => {

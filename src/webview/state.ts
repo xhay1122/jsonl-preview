@@ -39,6 +39,7 @@ export type Action =
   | { type: 'init'; summary: WebviewSummary; view?: ViewState }
   | { type: 'setQuery'; query: string }
   | { type: 'setSort'; sort?: SortState }
+  | { type: 'setColumnWidths'; columnWidths: Record<string, number> }
   | { type: 'startQuery'; queryRevision: number }
   | { type: 'requestPage'; offset: number }
   | { type: 'startSearch'; searchRevision: number }
@@ -71,7 +72,21 @@ export function sanitizeViewState(value: unknown): ViewState {
       ? { field: rawSort.field, direction: rawSort.direction }
       : undefined;
   const columns = Array.isArray(input.columns) ? input.columns.filter((column): column is string => typeof column === 'string' && column.length <= 512).slice(0, 200) : undefined;
-  return { ...(query === undefined ? {} : { query }), ...(sort === undefined ? {} : { sort }), ...(columns ? { columns } : {}) };
+  const rawColumnWidths = input.columnWidths && typeof input.columnWidths === 'object' && !Array.isArray(input.columnWidths)
+    ? input.columnWidths as Record<string, unknown>
+    : undefined;
+  const columnWidths = rawColumnWidths
+    ? Object.fromEntries(Object.entries(rawColumnWidths)
+      .filter(([key, width]) => key.length > 0 && key.length <= 512 && typeof width === 'number' && Number.isFinite(width) && width >= 60 && width <= 1200)
+      .slice(0, 200)
+      .map(([key, width]) => [key, Math.round(width as number)]))
+    : undefined;
+  return {
+    ...(query === undefined ? {} : { query }),
+    ...(sort === undefined ? {} : { sort }),
+    ...(columns ? { columns } : {}),
+    ...(columnWidths && Object.keys(columnWidths).length ? { columnWidths } : {})
+  };
 }
 
 function initialTree(summary?: WebviewSummary, generation = 0): TreeState {
@@ -126,6 +141,8 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'setSort': {
       return { ...state, view: { ...state.view, sort: action.sort ?? null } };
     }
+    case 'setColumnWidths':
+      return { ...state, view: { ...state.view, columnWidths: action.columnWidths } };
     case 'startQuery': return { ...state, queryRevision: action.queryRevision, requestedOffset: 0, page: { ...state.page, offset: 0 } };
     case 'requestPage': return { ...state, requestedOffset: action.offset };
     case 'startSearch': return { ...state, searchRevision: action.searchRevision };

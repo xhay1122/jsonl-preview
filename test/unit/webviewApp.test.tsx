@@ -303,14 +303,16 @@ describe('React webview app', () => {
     await userEvent.click(fieldHeader);
     await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { path: '/id', direction: 'asc' } })), { timeout: 1500 });
 
-    await userEvent.click(screen.getByTitle('Sort by original line number'));
+    const physicalLineHeader = screen.getByRole('columnheader', { name: '#' });
+    expect(physicalLineHeader.getAttribute('title')).toBeNull();
+    await userEvent.click(physicalLineHeader);
     await waitFor(() => {
       const latest = bridge.messages.findLast((message) => message.type === 'query');
       expect(latest).toBeTruthy();
       expect(latest && 'sort' in latest).toBe(false);
     }, { timeout: 1500 });
 
-    await userEvent.click(screen.getByTitle('Sort by original line number'));
+    await userEvent.click(physicalLineHeader);
     await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { by: 'physicalLine', direction: 'desc' } })), { timeout: 1500 });
   });
 

@@ -282,7 +282,7 @@ function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
   };
   return <section className="surface grid-surface">
     <div className="grid" role="grid" aria-rowcount={total} aria-busy={loadingPage} style={{ '--columns': fields.length } as CSSProperties} onScroll={onScroll}>
-      <div className="grid-row grid-header" role="row"><button type="button" className={`cell line-cell column-header ${!currentSort || currentSort.field === PHYSICAL_LINE_SORT ? 'sorted' : ''}`} role="columnheader" aria-sort={currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : currentSort ? 'none' : 'ascending'} title={tr('originalOrder')} onClick={() => onSort(PHYSICAL_LINE_SORT)}>#{currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? ' ↑' : ' ↓' : !currentSort ? ' ↑' : ''}</button>
+      <div className="grid-row grid-header" role="row"><button type="button" className={`cell line-cell column-header ${!currentSort || currentSort.field === PHYSICAL_LINE_SORT ? 'sorted' : ''}`} role="columnheader" aria-sort={currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : currentSort ? 'none' : 'ascending'} onClick={() => onSort(PHYSICAL_LINE_SORT)}>#{currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? ' ↑' : ' ↓' : !currentSort ? ' ↑' : ''}</button>
         {fields.map((field) => {
           const selectedSort = currentSort?.field === field;
           return <button key={field} type="button" className={`cell column-header ${selectedSort ? 'sorted' : ''}`} role="columnheader" aria-sort={selectedSort ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : 'none'} onClick={() => onSort(field)}>
@@ -305,9 +305,10 @@ function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
   </section>;
 }
 
-function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
+function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu, onColumnWidthsChange }: {
   state: AppState; onSort(field?: string, direction?: 'asc' | 'desc'): void; onPage(offset: number): void; onRecord(row: JsonlRow): void;
   onCellMenu(event: React.MouseEvent, row: JsonlRow, cellValue: unknown, cellText: string, field?: string): void;
+  onColumnWidthsChange(columnWidths: Record<string, number>): void;
 }): ReactNode {
   const summary = state.summary!;
   const all = summary.fields ?? ['$'];
@@ -324,11 +325,11 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
     return selectedSort ? currentSort?.direction === 'desc' ? 'descending' : 'ascending' : 'none';
   };
   const columns: Array<PrimaryTableCol<JsonlRow>> = [{
-    colKey: PHYSICAL_LINE_SORT, title: '#', width: 68, fixed: 'left', sorter: true,
-    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(PHYSICAL_LINE_SORT), title: tr('originalOrder'), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(PHYSICAL_LINE_SORT); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.physicalLine, String(row.physicalLine)) },
+    colKey: PHYSICAL_LINE_SORT, title: '#', width: state.view.columnWidths?.[PHYSICAL_LINE_SORT] ?? 68, fixed: 'left', sorter: true, resize: { minWidth: 60, maxWidth: 240 },
+    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(PHYSICAL_LINE_SORT), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(PHYSICAL_LINE_SORT); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.physicalLine, String(row.physicalLine)) },
     cell: ({ row }) => <button type="button" className="line-link" title={tr('sourceLine')} onClick={(event) => { event.stopPropagation(); send({ type: 'revealLine', line: row.physicalLine }); }}>{row.physicalLine}</button>
   }, ...fields.map((field): PrimaryTableCol<JsonlRow> => ({
-    colKey: field, title: field, width: 180, ellipsis: true, sorter: true,
+    colKey: field, title: field, width: state.view.columnWidths?.[field] ?? 180, ellipsis: true, sorter: true, resize: { minWidth: 80, maxWidth: 1200 },
     attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(field), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(field); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.cells[field], displayValue(row.cells[field], summary).text, field) },
     cell: ({ row }) => { const shown = displayValue(row.cells[field], summary); return <span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span>; }
   }))];
@@ -348,6 +349,8 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
     <div className="data-grid" role="grid" aria-rowcount={total} aria-busy={loadingPage || !state.page.loaded} onScroll={onScroll}>
       <Table<JsonlRow> key={state.page.loaded ? 'loaded' : 'initial'} className={`jsonl-table ${hasPagination ? 'has-pagination' : ''}`} data={rows} columns={columns} rowKey="resultIndex" size="small" bordered hover stripe
         maxHeight="100%" loading={loadingPage || !state.page.loaded} sort={displayedSort} onSortChange={onTableSort}
+        hideSortTips
+        resizable tableLayout="fixed" onColumnResizeChange={({ columnsWidth }) => onColumnWidthsChange(columnsWidth)}
         scroll={{ type: 'virtual', rowHeight: 34, isFixedRowHeight: true, threshold: 40, bufferSize: 12 }}
         disableDataPage
         pagination={hasPagination ? { current: currentPage, pageSize, total, showPageSize: false, size: 'small', onCurrentChange: (page) => onPage((page - 1) * pageSize) } : undefined}
@@ -501,6 +504,9 @@ export function App(): ReactNode {
     else if (current?.field === field && current.direction === 'desc') dispatch({ type: 'setSort' });
     else dispatch({ type: 'setSort', sort: { field, direction: current?.field === field ? 'desc' : 'asc' } });
   };
+  const onColumnWidthsChange = (columnWidths: Record<string, number>) => {
+    dispatch({ type: 'setColumnWidths', columnWidths: { ...state.view.columnWidths, ...columnWidths } });
+  };
   const onPage = (offset: number) => { dispatch({ type: 'requestPage', offset }); send({ type: 'page', offset, queryRevision: state.queryRevision }); };
   const onRecord = (row: JsonlRow) => {
     if (!row.rawTruncated) { setDrawer(recordDrawer(row.physicalLine, row.raw)); return; }
@@ -517,7 +523,7 @@ export function App(): ReactNode {
     <StatusBar summary={summary} extra={extra} progress={state.progressRecords} />
     {summary.kind === 'json'
       ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} />
-      : <JsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} />}
+      : <JsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} onColumnWidthsChange={onColumnWidthsChange} />}
     {menu && <ContextMenu menu={menu} close={() => setMenu(undefined)} />}
     <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={drawer.actions} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setDrawer(undefined)}>
       {drawer && <div className="drawer-content">
