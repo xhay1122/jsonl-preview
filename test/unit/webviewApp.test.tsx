@@ -130,6 +130,25 @@ describe('React webview app', () => {
     expect(copyContent.closest('.t-drawer__header')).toBeTruthy();
     await userEvent.click(copyContent);
     expect(bridge.messages).toContainEqual({ type: 'copy', text: completeText });
+
+    const viewer = document.querySelector<HTMLElement>('.full-content-viewer')!;
+    const selection = window.getSelection()!;
+    const range = document.createRange();
+    range.setStart(viewer.firstChild!, 0);
+    range.setEnd(viewer.firstChild!, 13);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.contextMenu(viewer, { clientX: 20, clientY: 30 });
+    expect(screen.getByRole('menuitem', { name: 'Copy Selected Content' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open Selection in Temporary Tab' }).querySelector('.t-icon-tab')).toBeTruthy();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Copy Selected Content' }));
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: 'complete text' });
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.contextMenu(viewer, { clientX: 20, clientY: 30 });
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open Selection in Temporary Tab' }));
+    expect(bridge.messages).toContainEqual({ type: 'openTemp', text: 'complete text' });
   });
 
   it('shows row and cell copy actions only for JSONL table cells', async () => {

@@ -42,6 +42,15 @@ function temporaryText(value: unknown): string {
   return jsonText(value);
 }
 
+function selectedTextWithin(element: Element): string | undefined {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return undefined;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return undefined;
+  const text = selection.toString();
+  return text.length > 0 ? text : undefined;
+}
+
 function displayValue(value: unknown, summary: WebviewSummary): { text: string; title?: string } {
   if (value === undefined) return { text: '—' };
   if (value === null) return { text: 'null' };
@@ -482,6 +491,15 @@ export function App(): ReactNode {
         : send({ type: 'openTemp', text: temporaryText(cellValue) }) }] : [])
     ] });
   }, [copied]);
+  const onFullTextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const text = selectedTextWithin(event.currentTarget);
+    if (text === undefined) return;
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY, items: [
+      { label: tr('copySelected'), icon: <CopyIcon />, action: () => copied(text) },
+      { label: tr('openSelectedTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', text }) }
+    ] });
+  }, [copied]);
   const openLongText = useCallback((text: string) => setFullText(text), []);
 
   useEffect(() => {
@@ -533,7 +551,7 @@ export function App(): ReactNode {
     </Drawer>
     <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setFullText(undefined)}>
       {fullText !== undefined && <div className="drawer-content">
-        <pre className="text-viewer">{fullText}</pre>
+        <pre className="text-viewer full-content-viewer" onContextMenu={onFullTextMenu}>{fullText}</pre>
       </div>}
     </Drawer>
     {state.error && <div className="toast error-toast" role="alert" onClick={() => dispatch({ type: 'clearError' })}>{state.error}</div>}
