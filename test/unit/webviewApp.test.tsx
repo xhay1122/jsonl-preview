@@ -73,14 +73,17 @@ describe('React webview app', () => {
     render(<App />);
     window.dispatchEvent(new MessageEvent('message', { data: {
       type: 'init',
-      summary: { kind: 'jsonl', revision: 'v1', byteLength: 20, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['name'], locale: 'zh-cn' },
+      summary: { kind: 'jsonl', revision: 'v1', byteLength: 40, parseMilliseconds: 1, errors: 0, recordCount: 2, fields: ['name'], locale: 'zh-cn' },
       uiState: {}
     } }));
     await waitFor(() => expect(bridge.messages.some((message) => message.type === 'page')).toBe(true));
     const page = bridge.messages.findLast((message) => message.type === 'page');
     window.dispatchEvent(new MessageEvent('message', { data: {
-      type: 'page', rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"Ada"}', cells: { name: 'Ada' } }],
-      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      type: 'page', rows: [
+        { resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"Ada"}', cells: { name: 'Ada' } },
+        { resultIndex: 2, physicalLine: 2, status: 'valid', raw: '{"name":"Grace"}', cells: { name: 'Grace' } }
+      ],
+      total: 2, scannedRows: 2, matchedRows: 2, isComplete: true, offset: 0,
       queryRevision: page && 'queryRevision' in page ? page.queryRevision : 1
     } }));
     await userEvent.click(await screen.findByText('Ada'));
@@ -97,8 +100,17 @@ describe('React webview app', () => {
     expect(document.querySelector<HTMLElement>('.t-drawer__content-wrapper')?.style.width).toBe('66.6667vw');
     const mask = document.querySelector<HTMLElement>('.t-drawer__mask');
     expect(mask).toBeTruthy();
+    expect(document.head.querySelector('style[data-id^="td_drawer_"]')).toBeNull();
     await userEvent.click(mask!);
-    await waitFor(() => expect(document.querySelector('.t-drawer')).toBeNull());
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeNull());
+    expect(document.querySelector('.drawer-content')).toBeNull();
+    await userEvent.click(screen.getByText('Grace'));
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeTruthy());
+    await userEvent.click(document.querySelector<HTMLElement>('.t-drawer__mask')!);
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeNull());
+    await userEvent.click(screen.getByText('Ada'));
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeTruthy());
+    expect(document.head.querySelector('style[data-id^="td_drawer_"]')).toBeNull();
   });
 
   it('loads a complete large record and opens long text in a copyable second drawer', async () => {

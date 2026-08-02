@@ -56,6 +56,15 @@ describe('webview JSONL grid styles', () => {
     expect(declarations('.virtual-window')).toMatch(/width:\s*100%/);
   });
 
+  it("reserves the paginator's actual height instead of clipping it at the bottom", () => {
+    expect(declarations('.jsonl-table')).toMatch(/display:\s*flex/);
+    expect(declarations('.jsonl-table')).toMatch(/flex-direction:\s*column/);
+    expect(declarations('.jsonl-table.has-pagination .t-table__content')).toMatch(/flex:\s*1 1 auto/);
+    expect(declarations('.jsonl-table.has-pagination .t-table__content')).toMatch(/height:\s*auto/);
+    expect(declarations('.jsonl-table .t-table__pagination-wrap')).toMatch(/flex:\s*0 0 auto/);
+    expect(declarations('.jsonl-table .t-table__pagination')).toMatch(/padding:\s*8px 12px/);
+  });
+
   it('does not expose a second horizontal scrollbar in the fixed header', () => {
     const header = declarations('.jsonl-table .t-table__affixed-header-elm');
     expect(header).toMatch(/overflow-x:\s*hidden/);
