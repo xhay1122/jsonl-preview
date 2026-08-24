@@ -39,11 +39,30 @@ describe('webview drawer styles', () => {
 });
 
 describe('webview JSONL grid styles', () => {
+  it('uses the active editor background for the initial table loading overlay', () => {
+    expect(declarations(':root')).toMatch(/--td-mask-disabled:\s*color-mix\(in srgb,\s*var\(--vscode-editor-background\) 72%,\s*transparent\)/);
+  });
+
+  it('maps the fixed table header surface to the active VS Code theme', () => {
+    expect(declarations(':root')).toMatch(/--td-bg-color-secondarycontainer:\s*var\(--surface\)/);
+    expect(declarations(':root')).toMatch(/--td-bg-color-secondarycontainer-hover:\s*var\(--vscode-list-hoverBackground\)/);
+    expect(styles).toMatch(/\.jsonl-table \.t-table__header\.t-table__header--fixed > tr > th\s*\{[^}]*background:\s*var\(--surface\)/);
+  });
+
   it('uses a single remaining-height scroll area and shared row widths', () => {
     expect(declarations('.jsonl-layout')).toMatch(/height:\s*100vh/);
     expect(declarations('.grid')).toMatch(/height:\s*100%/);
     expect(declarations('.grid-row')).toMatch(/width:\s*100%/);
     expect(declarations('.virtual-window')).toMatch(/width:\s*100%/);
+  });
+
+  it("reserves the paginator's actual height instead of clipping it at the bottom", () => {
+    expect(declarations('.jsonl-table')).toMatch(/display:\s*flex/);
+    expect(declarations('.jsonl-table')).toMatch(/flex-direction:\s*column/);
+    expect(declarations('.jsonl-table.has-pagination .t-table__content')).toMatch(/flex:\s*1 1 auto/);
+    expect(declarations('.jsonl-table.has-pagination .t-table__content')).toMatch(/height:\s*auto/);
+    expect(declarations('.jsonl-table .t-table__pagination-wrap')).toMatch(/flex:\s*0 0 auto/);
+    expect(declarations('.jsonl-table .t-table__pagination')).toMatch(/padding:\s*8px 12px/);
   });
 
   it('does not expose a second horizontal scrollbar in the fixed header', () => {

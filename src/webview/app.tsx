@@ -33,6 +33,19 @@ function maxAutoDepth(summary: WebviewSummary): number {
 }
 const PHYSICAL_LINE_SORT = '\u0000physicalLine';
 const ERROR_TOAST_DURATION_MS = 4000;
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+function dateFormatter(timezone?: string): Intl.DateTimeFormat {
+  const key = timezone && timezone !== 'system' ? timezone : 'system';
+  let formatter = dateFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium', timeStyle: 'medium',
+      ...(key !== 'system' ? { timeZone: key } : {})
+    });
+    dateFormatters.set(key, formatter);
+  }
+  return formatter;
+}
 function sortSpec(sort?: SortState | null): { path: string; direction: 'asc' | 'desc' } | { by: 'physicalLine'; direction: 'asc' | 'desc' } | undefined {
   if (!sort) return undefined;
   if (sort.field === PHYSICAL_LINE_SORT) return sort.direction === 'asc' ? undefined : { by: 'physicalLine', direction: 'desc' };
@@ -41,6 +54,15 @@ function sortSpec(sort?: SortState | null): { path: string; direction: 'asc' | '
 function temporaryText(value: unknown): string {
   if (typeof value === 'string') { try { return jsonText(JSON.parse(value)); } catch { return jsonText(value); } }
   return jsonText(value);
+}
+
+function selectedTextWithin(element: Element): string | undefined {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return undefined;
+  const range = selection.getRangeAt(0);
+  if (!element.contains(range.startContainer) || !element.contains(range.endContainer)) return undefined;
+  const text = selection.toString();
+  return text.length > 0 ? text : undefined;
 }
 
 function displayValue(value: unknown, summary: WebviewSummary): { text: string; title?: string } {
@@ -58,11 +80,7 @@ function displayValue(value: unknown, summary: WebviewSummary): { text: string; 
   }
   if (milliseconds !== undefined) {
     try {
-      const options: Intl.DateTimeFormatOptions = {
-        dateStyle: 'medium', timeStyle: 'medium',
-        ...(summary.timezone && summary.timezone !== 'system' ? { timeZone: summary.timezone } : {})
-      };
-      return { text: new Intl.DateTimeFormat(undefined, options).format(new Date(milliseconds)), title: String(value) };
+      return { text: dateFormatter(summary.timezone).format(new Date(milliseconds)), title: String(value) };
     } catch { /* keep the original value */ }
   }
   if (typeof value === 'string') return { text: value };
@@ -283,7 +301,7 @@ function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
   };
   return <section className="surface grid-surface">
     <div className="grid" role="grid" aria-rowcount={total} aria-busy={loadingPage} style={{ '--columns': fields.length } as CSSProperties} onScroll={onScroll}>
-      <div className="grid-row grid-header" role="row"><button type="button" className={`cell line-cell column-header ${!currentSort || currentSort.field === PHYSICAL_LINE_SORT ? 'sorted' : ''}`} role="columnheader" aria-sort={currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : currentSort ? 'none' : 'ascending'} title={tr('originalOrder')} onClick={() => onSort(PHYSICAL_LINE_SORT)}>#{currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? ' ↑' : ' ↓' : !currentSort ? ' ↑' : ''}</button>
+      <div className="grid-row grid-header" role="row"><button type="button" className={`cell line-cell column-header ${!currentSort || currentSort.field === PHYSICAL_LINE_SORT ? 'sorted' : ''}`} role="columnheader" aria-sort={currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : currentSort ? 'none' : 'ascending'} onClick={() => onSort(PHYSICAL_LINE_SORT)}>#{currentSort?.field === PHYSICAL_LINE_SORT ? currentSort.direction === 'asc' ? ' ↑' : ' ↓' : !currentSort ? ' ↑' : ''}</button>
         {fields.map((field) => {
           const selectedSort = currentSort?.field === field;
           return <button key={field} type="button" className={`cell column-header ${selectedSort ? 'sorted' : ''}`} role="columnheader" aria-sort={selectedSort ? currentSort.direction === 'asc' ? 'ascending' : 'descending' : 'none'} onClick={() => onSort(field)}>
@@ -306,9 +324,10 @@ function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
   </section>;
 }
 
-function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
+function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu, onColumnWidthsChange }: {
   state: AppState; onSort(field?: string, direction?: 'asc' | 'desc'): void; onPage(offset: number): void; onRecord(row: JsonlRow): void;
   onCellMenu(event: React.MouseEvent, row: JsonlRow, cellValue: unknown, cellText: string, field?: string): void;
+  onColumnWidthsChange(columnWidths: Record<string, number>): void;
 }): ReactNode {
   const summary = state.summary!;
   const all = summary.fields ?? ['$'];
@@ -325,11 +344,11 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
     return selectedSort ? currentSort?.direction === 'desc' ? 'descending' : 'ascending' : 'none';
   };
   const columns: Array<PrimaryTableCol<JsonlRow>> = [{
-    colKey: PHYSICAL_LINE_SORT, title: '#', width: 68, fixed: 'left', sorter: true,
-    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(PHYSICAL_LINE_SORT), title: tr('originalOrder'), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(PHYSICAL_LINE_SORT); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.physicalLine, String(row.physicalLine)) },
+    colKey: PHYSICAL_LINE_SORT, title: '#', width: state.view.columnWidths?.[PHYSICAL_LINE_SORT] ?? 68, fixed: 'left', sorter: true, resize: { minWidth: 60, maxWidth: 240 },
+    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(PHYSICAL_LINE_SORT), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(PHYSICAL_LINE_SORT); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.physicalLine, String(row.physicalLine)) },
     cell: ({ row }) => <button type="button" className="line-link" title={tr('sourceLine')} onClick={(event) => { event.stopPropagation(); send({ type: 'revealLine', line: row.physicalLine }); }}>{row.physicalLine}</button>
   }, ...fields.map((field): PrimaryTableCol<JsonlRow> => ({
-    colKey: field, title: field, width: 180, ellipsis: true, sorter: true,
+    colKey: field, title: field, width: state.view.columnWidths?.[field] ?? 180, ellipsis: true, sorter: true, resize: { minWidth: 80, maxWidth: 1200 },
     attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(field), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(field); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.cells[field], displayValue(row.cells[field], summary).text, field) },
     cell: ({ row }) => { const shown = displayValue(row.cells[field], summary); return <span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span>; }
   }))];
@@ -349,6 +368,8 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
     <div className="data-grid" role="grid" aria-rowcount={total} aria-busy={loadingPage || !state.page.loaded} onScroll={onScroll}>
       <Table<JsonlRow> key={state.page.loaded ? 'loaded' : 'initial'} className={`jsonl-table ${hasPagination ? 'has-pagination' : ''}`} data={rows} columns={columns} rowKey="resultIndex" size="small" bordered hover stripe
         maxHeight="100%" loading={loadingPage || !state.page.loaded} sort={displayedSort} onSortChange={onTableSort}
+        hideSortTips
+        resizable tableLayout="fixed" onColumnResizeChange={({ columnsWidth }) => onColumnWidthsChange(columnsWidth)}
         scroll={{ type: 'virtual', rowHeight: 34, isFixedRowHeight: true, threshold: 40, bufferSize: 12 }}
         disableDataPage
         pagination={hasPagination ? { current: currentPage, pageSize, total, showPageSize: false, size: 'small', onCurrentChange: (page) => onPage((page - 1) * pageSize) } : undefined}
@@ -356,6 +377,7 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu }: {
     </div>
   </section>;
 }
+const MemoizedJsonlGrid = memo(JsonlGrid);
 
 export function App(): ReactNode {
   const initialView = vscode.getState() ?? {};
@@ -485,6 +507,15 @@ export function App(): ReactNode {
         : send({ type: 'openCurrent', text: temporaryText(cellValue) }) }] : [])
     ] });
   }, [copied]);
+  const onFullTextMenu = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const text = selectedTextWithin(event.currentTarget);
+    if (text === undefined) return;
+    event.preventDefault();
+    setMenu({ x: event.clientX, y: event.clientY, items: [
+      { label: tr('copySelected'), icon: <CopyIcon />, action: () => copied(text) },
+      { label: tr('openSelectedTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', text }) }
+    ] });
+  }, [copied]);
   const openLongText = useCallback((text: string) => setFullText(text), []);
 
   useEffect(() => {
@@ -499,20 +530,26 @@ export function App(): ReactNode {
     return () => document.removeEventListener('contextmenu', suppressNativeMenu);
   }, []);
 
-  const onSort = (field?: string, direction?: 'asc' | 'desc') => {
-    const current = state.view.sort;
+  const onSort = useCallback((field?: string, direction?: 'asc' | 'desc') => {
+    const current = stateRef.current.view.sort;
     if (!field) dispatch({ type: 'setSort' });
     else if (direction) dispatch({ type: 'setSort', sort: { field, direction } });
     else if (field === PHYSICAL_LINE_SORT) dispatch({ type: 'setSort', sort: { field, direction: current?.field === field || !current ? current?.direction === 'desc' ? 'asc' : 'desc' : 'asc' } });
     else if (current?.field === field && current.direction === 'desc') dispatch({ type: 'setSort' });
     else dispatch({ type: 'setSort', sort: { field, direction: current?.field === field ? 'desc' : 'asc' } });
-  };
-  const onPage = (offset: number) => { dispatch({ type: 'requestPage', offset }); send({ type: 'page', offset, queryRevision: state.queryRevision }); };
-  const onRecord = (row: JsonlRow) => {
+  }, []);
+  const onColumnWidthsChange = useCallback((columnWidths: Record<string, number>) => {
+    dispatch({ type: 'setColumnWidths', columnWidths: { ...stateRef.current.view.columnWidths, ...columnWidths } });
+  }, []);
+  const onPage = useCallback((offset: number) => {
+    dispatch({ type: 'requestPage', offset });
+    send({ type: 'page', offset, queryRevision: stateRef.current.queryRevision });
+  }, []);
+  const onRecord = useCallback((row: JsonlRow) => {
     if (!row.rawTruncated) { setDrawer(recordDrawer(row.physicalLine, row.raw)); return; }
     setDrawer({ title: tr('line', { line: row.physicalLine }), physicalLine: row.physicalLine, loading: true });
     send({ type: 'record', physicalLine: row.physicalLine });
-  };
+  }, [recordDrawer]);
 
   const summary = state.summary;
   useEffect(() => { document.querySelector('#app')?.setAttribute('aria-busy', String(!summary)); }, [summary]);
@@ -523,17 +560,17 @@ export function App(): ReactNode {
     <StatusBar summary={summary} extra={extra} progress={state.progressRecords} />
     {summary.kind === 'json'
       ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} />
-      : <JsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} />}
+      : <MemoizedJsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} onColumnWidthsChange={onColumnWidthsChange} />}
     {menu && <ContextMenu menu={menu} close={() => setMenu(undefined)} />}
-    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={drawer.actions} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setDrawer(undefined)}>
+    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={drawer.actions} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setDrawer(undefined)}>
       {drawer && <div className="drawer-content">
         {drawer.loading ? <div className="drawer-loading"><span className="loading-spinner" aria-hidden /><span>{tr('loading')}</span></div>
           : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openLongText} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
       </div>}
     </Drawer>
-    <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough closeOnEscKeydown destroyOnClose onClose={() => setFullText(undefined)}>
+    <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setFullText(undefined)}>
       {fullText !== undefined && <div className="drawer-content">
-        <pre className="text-viewer">{fullText}</pre>
+        <pre className="text-viewer full-content-viewer" onContextMenu={onFullTextMenu}>{fullText}</pre>
       </div>}
     </Drawer>
     {state.error && <div className="toast error-toast" role="alert" onClick={() => dispatch({ type: 'clearError' })}>{state.error}</div>}

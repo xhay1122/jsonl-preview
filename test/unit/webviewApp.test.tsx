@@ -41,7 +41,7 @@ describe('React webview app', () => {
 
     expect(await screen.findByText('JSONL Preview')).toBeTruthy();
     const input = screen.getByRole('searchbox');
-    expect(input.getAttribute('placeholder')).toBe('Filter rows by value or enter JMESPath');
+    expect(input.getAttribute('placeholder')).toBe("Filter rows by value or enter JMESPath, e.g. level == 'error'");
     await userEvent.type(input, 'active');
 
     await waitFor(() => expect(bridge.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'query', jmesPath: 'active' })])), { timeout: 1500 });
@@ -73,14 +73,17 @@ describe('React webview app', () => {
     render(<App />);
     window.dispatchEvent(new MessageEvent('message', { data: {
       type: 'init',
-      summary: { kind: 'jsonl', revision: 'v1', byteLength: 20, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['name'], locale: 'zh-cn' },
+      summary: { kind: 'jsonl', revision: 'v1', byteLength: 40, parseMilliseconds: 1, errors: 0, recordCount: 2, fields: ['name'], locale: 'zh-cn' },
       uiState: {}
     } }));
     await waitFor(() => expect(bridge.messages.some((message) => message.type === 'page')).toBe(true));
     const page = bridge.messages.findLast((message) => message.type === 'page');
     window.dispatchEvent(new MessageEvent('message', { data: {
-      type: 'page', rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"Ada"}', cells: { name: 'Ada' } }],
-      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      type: 'page', rows: [
+        { resultIndex: 1, physicalLine: 1, status: 'valid', raw: '{"name":"Ada"}', cells: { name: 'Ada' } },
+        { resultIndex: 2, physicalLine: 2, status: 'valid', raw: '{"name":"Grace"}', cells: { name: 'Grace' } }
+      ],
+      total: 2, scannedRows: 2, matchedRows: 2, isComplete: true, offset: 0,
       queryRevision: page && 'queryRevision' in page ? page.queryRevision : 1
     } }));
     await userEvent.click(await screen.findByText('Ada'));
@@ -97,8 +100,17 @@ describe('React webview app', () => {
     expect(document.querySelector<HTMLElement>('.t-drawer__content-wrapper')?.style.width).toBe('66.6667vw');
     const mask = document.querySelector<HTMLElement>('.t-drawer__mask');
     expect(mask).toBeTruthy();
+    expect(document.head.querySelector('style[data-id^="td_drawer_"]')).toBeNull();
     await userEvent.click(mask!);
-    await waitFor(() => expect(document.querySelector('.t-drawer')).toBeNull());
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeNull());
+    expect(document.querySelector('.drawer-content')).toBeNull();
+    await userEvent.click(screen.getByText('Grace'));
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeTruthy());
+    await userEvent.click(document.querySelector<HTMLElement>('.t-drawer__mask')!);
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeNull());
+    await userEvent.click(screen.getByText('Ada'));
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeTruthy());
+    expect(document.head.querySelector('style[data-id^="td_drawer_"]')).toBeNull();
   });
 
   it('loads a complete large record and opens long text in a copyable second drawer', async () => {
@@ -130,6 +142,25 @@ describe('React webview app', () => {
     expect(copyContent.closest('.t-drawer__header')).toBeTruthy();
     await userEvent.click(copyContent);
     expect(bridge.messages).toContainEqual({ type: 'copy', text: completeText });
+
+    const viewer = document.querySelector<HTMLElement>('.full-content-viewer')!;
+    const selection = window.getSelection()!;
+    const range = document.createRange();
+    range.setStart(viewer.firstChild!, 0);
+    range.setEnd(viewer.firstChild!, 13);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.contextMenu(viewer, { clientX: 20, clientY: 30 });
+    expect(screen.getByRole('menuitem', { name: 'Copy Selected Content' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open Selection in Temporary Tab' }).querySelector('.t-icon-tab')).toBeTruthy();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Copy Selected Content' }));
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: 'complete text' });
+
+    selection.removeAllRanges();
+    selection.addRange(range);
+    fireEvent.contextMenu(viewer, { clientX: 20, clientY: 30 });
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open Selection in Temporary Tab' }));
+    expect(bridge.messages).toContainEqual({ type: 'openTemp', text: 'complete text' });
   });
 
   it('shows row and cell copy actions only for JSONL table cells', async () => {
@@ -318,14 +349,16 @@ describe('React webview app', () => {
     await userEvent.click(fieldHeader);
     await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { path: '/id', direction: 'asc' } })), { timeout: 1500 });
 
-    await userEvent.click(screen.getByTitle('Sort by original line number'));
+    const physicalLineHeader = screen.getByRole('columnheader', { name: '#' });
+    expect(physicalLineHeader.getAttribute('title')).toBeNull();
+    await userEvent.click(physicalLineHeader);
     await waitFor(() => {
       const latest = bridge.messages.findLast((message) => message.type === 'query');
       expect(latest).toBeTruthy();
       expect(latest && 'sort' in latest).toBe(false);
     }, { timeout: 1500 });
 
-    await userEvent.click(screen.getByTitle('Sort by original line number'));
+    await userEvent.click(physicalLineHeader);
     await waitFor(() => expect(bridge.messages.findLast((message) => message.type === 'query')).toEqual(expect.objectContaining({ sort: { by: 'physicalLine', direction: 'desc' } })), { timeout: 1500 });
   });
 

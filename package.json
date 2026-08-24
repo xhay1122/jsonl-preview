@@ -2,7 +2,7 @@
   "name": "json-jsonl-preview",
   "displayName": "JSON / JSONL Preview",
   "description": "Fast, safe previews for JSON and JSON Lines files.",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "publisher": "xhay",
   "icon": "assets/icon.png",
   "license": "MIT",
