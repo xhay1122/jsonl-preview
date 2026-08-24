@@ -4,7 +4,7 @@ const zh = {
   records: '{count} 条记录', errors: '{count} 个错误', indexed: '已索引 {count} 条', queryResult: '搜索 / JMESPath 查询结果', queryResultAria: '查询结果',
   structure: '文档结构', collapseAll: '全部收起', expandAll: '全部展开', invalidJson: '无法解析 JSON', location: '第 {line}:{column} 行',
   sourceLine: '在源码中定位此行', copied: '已复制到剪贴板',
-  copyKey: '复制属性名', copyValue: '复制值', copyCell: '复制单元内容', copyJson: '复制 JSON', copyPath: '复制 JSONPath', openTemp: '在临时 Tab 中打开', openCurrent: '在当前 Tab 打开', openRowTemp: '临时 Tab 打开（整行）', openRowCurrent: '当前 Tab 打开（整行）', openCellTemp: '临时 Tab 打开（单元格）', openCellCurrent: '当前 Tab 打开（单元格）',
+  copyKey: '复制属性名', copyValue: '复制值', copyCell: '复制单元内容', copyJson: '复制 JSON', copyPath: '复制 JSONPath', openTemp: '在临时 Tab 打开', openCurrent: '在当前 Tab 打开', openRowTemp: '临时 Tab 打开（整行）', openRowCurrent: '当前 Tab 打开（整行）', openCellTemp: '临时 Tab 打开（单元格）', openCellCurrent: '当前 Tab 打开（单元格）',
   fullContent: '完整内容', copyContent: '复制内容', copySelected: '复制选中内容', openSelectedTemp: '临时 Tab 打开', line: '第 {line} 行', copyLine: '复制整行', tempTab: '临时 Tab 打开', currentTab: '当前 Tab 打开', preparing: '正在准备预览…', expression: '表达式：{value}', results: '{count} 条结果'
 } as const;
 
