@@ -33,6 +33,10 @@ export type WebviewRequest =
   | { type: 'openTemp'; nodeId: string }
   | { type: 'openTemp'; physicalLine: number }
   | { type: 'openTemp'; physicalLine: number; field: string }
+  | { type: 'openCurrent'; text: string }
+  | { type: 'openCurrent'; nodeId: string }
+  | { type: 'openCurrent'; physicalLine: number }
+  | { type: 'openCurrent'; physicalLine: number; field: string }
   | { type: 'openSource' }
   | { type: 'format' }
   | { type: 'repair' }

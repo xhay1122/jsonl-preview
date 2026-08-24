@@ -28,7 +28,7 @@ function validMessage(value: unknown): value is WebviewMessage {
   if (!value || typeof value !== 'object') return false;
   try { if (JSON.stringify(value).length > 64 * 1024) return false; } catch { return false; }
   const message = value as Record<string, unknown>;
-  return typeof message.type === 'string' && ['ready', 'children', 'page', 'record', 'query', 'jsonSearch', 'revealLine', 'copy', 'openTemp', 'openSource', 'format', 'repair', 'export', 'persist'].includes(message.type);
+  return typeof message.type === 'string' && ['ready', 'children', 'page', 'record', 'query', 'jsonSearch', 'revealLine', 'copy', 'openTemp', 'openCurrent', 'openSource', 'format', 'repair', 'export', 'persist'].includes(message.type);
 }
 
 export class PreviewController implements vscode.Disposable {
@@ -130,6 +130,7 @@ export class PreviewController implements vscode.Disposable {
       else if (message.type === 'revealLine') await this.revealLine(Number(message.line));
       else if (message.type === 'copy') await this.copy(message, session);
       else if (message.type === 'openTemp') await this.openTemporary(message, session);
+      else if (message.type === 'openCurrent') await this.openCurrent(message, session);
       else if (message.type === 'openSource') await this.openSource();
       else if (message.type === 'format') await this.format(session);
       else if (message.type === 'repair') await this.repair(session);
@@ -164,22 +165,34 @@ export class PreviewController implements vscode.Disposable {
     await vscode.env.clipboard.writeText(data.content);
   }
   private async openTemporary(message: WebviewMessage, session: SessionHandle): Promise<void> {
+    const content = await this.generatedContent(message, session);
+    if (!content) return;
+    const document = await vscode.workspace.openTextDocument({ language: 'json', content });
+    await vscode.commands.executeCommand('vscode.openWith', document.uri, 'jsonlPreview.text', { preview: true });
+  }
+  private async openCurrent(message: WebviewMessage, session: SessionHandle): Promise<void> {
+    const content = await this.generatedContent(message, session);
+    if (!content) return;
+    const viewColumn = this.panel.viewColumn;
+    const document = await vscode.workspace.openTextDocument({ language: 'json', content });
+    await vscode.commands.executeCommand('vscode.openWith', document.uri, 'jsonlPreview.text', { preview: false, viewColumn });
+    this.panel.dispose();
+  }
+  private async generatedContent(message: WebviewMessage, session: SessionHandle): Promise<string> {
     let content = typeof message.text === 'string' ? message.text : '';
     if (!content && Number.isSafeInteger(message.physicalLine) && Number(message.physicalLine) > 0) {
       const field = typeof message.field === 'string' ? message.field : '';
       const data = await this.client.request(field
         ? { type: 'jsonl/getCell', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine), field }
         : { type: 'jsonl/getRecord', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine) }) as { content: string };
-      if (this.session !== session || this.disposed) return;
+      if (this.session !== session || this.disposed) return '';
       content = data.content;
     } else if (!content && typeof message.nodeId === 'string') {
       const data = await this.client.request({ type: 'json/getNodeText', sessionId: session.id, revision: session.revision, nodeId: message.nodeId, format: 'pretty' }) as { content: string };
-      if (this.session !== session || this.disposed) return;
+      if (this.session !== session || this.disposed) return '';
       content = data.content;
     }
-    if (!content) return;
-    const document = await vscode.workspace.openTextDocument({ language: 'json', content });
-    await vscode.commands.executeCommand('vscode.openWith', document.uri, 'jsonlPreview.text', { preview: true });
+    return content;
   }
   private async format(session: SessionHandle): Promise<void> {
     const document = this.requireEditableDocument();

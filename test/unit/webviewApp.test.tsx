@@ -152,6 +152,8 @@ describe('React webview app', () => {
     expect(screen.getByRole('menuitem', { name: 'Copy Row' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' }).querySelector('.t-icon-tab')).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' }).querySelector('.t-icon-tab')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Row)' }).querySelector('.t-icon-browse')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Cell)' }).querySelector('.t-icon-browse')).toBeTruthy();
     expect(screen.getAllByRole('menuitem')).not.toContain(document.activeElement);
     await userEvent.click(screen.getByRole('menuitem', { name: 'Copy Cell' }));
     expect(bridge.messages).toContainEqual({ type: 'copy', text: 'Ada' });
@@ -164,10 +166,20 @@ describe('React webview app', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' }));
     expect(bridge.messages).toContainEqual({ type: 'openTemp', physicalLine: 1 });
 
+    fireEvent.contextMenu(screen.getByText('Ada'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Current Tab (Cell)' }));
+    expect(bridge.messages).toContainEqual({ type: 'openCurrent', physicalLine: 1, field: 'name' });
+
+    fireEvent.contextMenu(screen.getByText('Ada'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Current Tab (Row)' }));
+    expect(bridge.messages).toContainEqual({ type: 'openCurrent', physicalLine: 1 });
+
     fireEvent.contextMenu(screen.getByText('—'));
     expect(screen.getByRole('menuitem', { name: 'Copy Cell' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Current Tab (Cell)' })).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Row)' })).toBeTruthy();
 
     expect(fireEvent.contextMenu(document.querySelector('main')!)).toBe(false);
     expect(screen.queryByRole('menu')).toBeNull();
@@ -254,6 +266,9 @@ describe('React webview app', () => {
     expect(screen.getByRole('menuitem', { name: 'Copy Value' }).querySelector('.t-icon-copy')).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Copy JSONPath' }).querySelector('.t-icon-code')).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab' }).querySelector('.t-icon-tab')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab' }).querySelector('.t-icon-browse')).toBeTruthy();
+    const actions = screen.getAllByRole('menuitem').map((item) => item.getAttribute('aria-label') ?? item.textContent);
+    expect(actions.indexOf('Open in Current Tab')).toBe(actions.indexOf('Open in Temporary Tab') + 1);
   });
 
   it('renders nested children as soon as their async page arrives', async () => {

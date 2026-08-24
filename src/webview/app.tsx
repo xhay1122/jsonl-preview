@@ -11,6 +11,7 @@ import FormatPainterIcon from 'tdesign-icons-react/esm/components/format-painter
 import KeyIcon from 'tdesign-icons-react/esm/components/key';
 import SearchIcon from 'tdesign-icons-react/esm/components/search';
 import TabIcon from 'tdesign-icons-react/esm/components/tab';
+import BrowseIcon from 'tdesign-icons-react/esm/components/browse';
 import ToolsIcon from 'tdesign-icons-react/esm/components/tools';
 import { BrandIcon } from './brandIcon';
 import type { JsonNodeView, JsonlRow } from '../shared/types.js';
@@ -378,7 +379,7 @@ export function App(): ReactNode {
   const recordDrawer = useCallback((physicalLine: number, text: string): DrawerState => ({
     title: tr('line', { line: physicalLine }), physicalLine,
     value: (() => { try { return JSON.parse(text) as unknown; } catch { return undefined; } })(), text,
-    actions: <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(text)}>{tr('copyLine')}</Button><Button size="small" variant="outline" icon={<TabIcon />} onClick={() => send({ type: 'openTemp', text })}>{tr('tempTab')}</Button></>
+    actions: <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(text)}>{tr('copyLine')}</Button><Button size="small" variant="outline" icon={<TabIcon />} onClick={() => send({ type: 'openTemp', text })}>{tr('tempTab')}</Button><Button size="small" variant="outline" icon={<BrowseIcon />} onClick={() => send({ type: 'openCurrent', text })}>{tr('currentTab')}</Button></>
   }), [copied]);
 
   useEffect(() => {
@@ -454,7 +455,8 @@ export function App(): ReactNode {
       ...(node.childrenCount === 0 ? [{ label: tr('copyValue'), icon: <CopyIcon />, action: () => copied(node.displayValue ?? '') }] : []),
       { label: tr('copyJson'), icon: <CopyIcon />, action: () => { send({ type: 'copy', nodeId: node.nodeId, format: 'pretty' }); announce(tr('copied')); } },
       { label: tr('copyPath'), icon: <CodeIcon />, action: () => copied(node.jsonPath) },
-      { label: tr('openTemp'), icon: <TabIcon />, action: () => node.type === 'string' && node.displayValue !== undefined ? send({ type: 'openTemp', text: temporaryText(node.displayValue) }) : send({ type: 'openTemp', nodeId: node.nodeId }) }
+      { label: tr('openTemp'), icon: <TabIcon />, action: () => node.type === 'string' && node.displayValue !== undefined ? send({ type: 'openTemp', text: temporaryText(node.displayValue) }) : send({ type: 'openTemp', nodeId: node.nodeId }) },
+      { label: tr('openCurrent'), icon: <BrowseIcon />, action: () => node.type === 'string' && node.displayValue !== undefined ? send({ type: 'openCurrent', text: temporaryText(node.displayValue) }) : send({ type: 'openCurrent', nodeId: node.nodeId }) }
     ];
     setMenu({ x: event.clientX, y: event.clientY, items });
   }, [announce, copied]);
@@ -464,7 +466,8 @@ export function App(): ReactNode {
       ...(key !== undefined ? [{ label: tr('copyKey'), icon: <KeyIcon />, action: () => copied(key) }] : []),
       { label: tr('copyValue'), icon: <CopyIcon />, action: () => copied(typeof value === 'string' ? value : jsonText(value)) },
       ...(path !== undefined ? [{ label: tr('copyPath'), icon: <CodeIcon />, action: () => copied(path) }] : []),
-      { label: tr('openTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', text: temporaryText(value) }) }
+      { label: tr('openTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', text: temporaryText(value) }) },
+      { label: tr('openCurrent'), icon: <BrowseIcon />, action: () => send({ type: 'openCurrent', text: temporaryText(value) }) }
     ];
     setMenu({ x: event.clientX, y: event.clientY, items });
   }, [copied]);
@@ -474,9 +477,12 @@ export function App(): ReactNode {
       { label: tr('copyLine'), icon: <CopyIcon />, action: () => copied(row.raw) },
       { label: tr('copyCell'), icon: <CopyIcon />, action: () => copied(cellText) },
       { label: tr('openRowTemp'), icon: <TabIcon />, action: () => send({ type: 'openTemp', physicalLine: row.physicalLine }) },
+      { label: tr('openRowCurrent'), icon: <BrowseIcon />, action: () => send({ type: 'openCurrent', physicalLine: row.physicalLine }) },
       ...(cellValue !== undefined ? [{ label: tr('openCellTemp'), icon: <TabIcon />, action: () => field
         ? send({ type: 'openTemp', physicalLine: row.physicalLine, field })
-        : send({ type: 'openTemp', text: temporaryText(cellValue) }) }] : [])
+        : send({ type: 'openTemp', text: temporaryText(cellValue) }) }, { label: tr('openCellCurrent'), icon: <BrowseIcon />, action: () => field
+        ? send({ type: 'openCurrent', physicalLine: row.physicalLine, field })
+        : send({ type: 'openCurrent', text: temporaryText(cellValue) }) }] : [])
     ] });
   }, [copied]);
   const openLongText = useCallback((text: string) => setFullText(text), []);
