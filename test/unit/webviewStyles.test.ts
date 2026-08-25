@@ -34,14 +34,20 @@ describe('webview drawer styles', () => {
     expect(declarations('.drawer-header-actions')).toMatch(/flex:\s*0 1 auto/);
   });
 
-  it('wraps drawer values while revealing the value action on interaction', () => {
-    expect(declarations('.drawer-tree .tree-row')).toMatch(/align-items:\s*flex-start/);
-    expect(declarations('.drawer-tree .json-value')).toMatch(/white-space:\s*pre-wrap/);
-    expect(declarations('.drawer-tree .json-value')).toMatch(/overflow-wrap:\s*anywhere/);
-    expect(declarations('.inline-action')).toMatch(/flex:\s*0 0 auto/);
-    expect(declarations('.inline-action')).toMatch(/opacity:\s*0/);
-    expect(declarations('.inline-action')).toMatch(/white-space:\s*nowrap/);
-    expect(declarations('.tree-row:hover .inline-action, .inline-action:focus-visible')).toMatch(/opacity:\s*1/);
+  it('uses the shared responsive three-line clamp and reveals the value action on interaction', () => {
+    expect(styles).not.toMatch(/\.drawer-tree \.json-value\s*\{/);
+    expect(declarations('.json-value')).toMatch(/-webkit-line-clamp:\s*3/);
+    expect(declarations('.json-value')).toMatch(/line-clamp:\s*3/);
+    expect(declarations('.json-value')).toMatch(/white-space:\s*normal/);
+    expect(declarations('.json-value')).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(declarations('.tree-row')).toMatch(/position:\s*relative/);
+    expect(declarations('.inline-actions')).toMatch(/position:\s*absolute/);
+    expect(declarations('.inline-actions')).toMatch(/opacity:\s*0/);
+    expect(declarations('.inline-actions')).toMatch(/transform:\s*translateX\(4px\)/);
+    expect(styles).not.toMatch(/\.inline-actions::before\s*\{/);
+    expect(declarations('.inline-action')).toMatch(/width:\s*26px/);
+    expect(declarations('.tree-row:hover .inline-actions, .inline-actions:focus-within')).toMatch(/opacity:\s*1/);
+    expect(declarations('.tree-row:hover .inline-actions, .inline-actions:focus-within')).toMatch(/pointer-events:\s*auto/);
   });
 });
 

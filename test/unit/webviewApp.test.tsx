@@ -96,6 +96,17 @@ describe('React webview app', () => {
     expect(screen.getByRole('button', { name: '复制整行' }).closest('.t-drawer__header')).toBeTruthy();
     expect(document.querySelector('.t-drawer__close-btn')).toBeTruthy();
     expect(screen.getByRole('button', { name: '查看' }).classList.contains('inline-action')).toBe(true);
+    const inlineActions = [...document.querySelectorAll<HTMLButtonElement>('.drawer-tree .inline-action')];
+    expect(inlineActions).toHaveLength(3);
+    expect(inlineActions[0]?.querySelector('.t-icon-browse')).toBeTruthy();
+    expect(inlineActions[1]?.querySelector('.t-icon-copy')).toBeTruthy();
+    expect(inlineActions[2]?.querySelector('.t-icon-tab')).toBeTruthy();
+    fireEvent.click(inlineActions[1]!);
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: 'Ada' });
+    fireEvent.click(inlineActions[2]!);
+    expect(bridge.messages).toContainEqual({ type: 'openTemp', text: '"Ada"' });
+    fireEvent.click(inlineActions[2]!, { altKey: true });
+    expect(bridge.messages).toContainEqual({ type: 'openCurrent', text: '"Ada"' });
     expect(document.querySelector('.drawer-tree .json-value')?.classList.contains('long-value')).toBe(false);
     expect(document.querySelector<HTMLElement>('.t-drawer__content-wrapper')?.style.width).toBe('66.6667vw');
     const mask = document.querySelector<HTMLElement>('.t-drawer__mask');

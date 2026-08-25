@@ -90,10 +90,16 @@ interface MenuItem { label: string; action(): void; icon?: ReactNode }
 interface MenuState { x: number; y: number; items: MenuItem[] }
 interface DrawerState { title: string; value?: unknown; text?: string; actions?: ReactNode; physicalLine?: number; loading?: boolean }
 
-function JsonScalarValue({ text, kind, expandable, onExpand }: { text: string; kind: string; expandable: boolean; onExpand(): void }): ReactNode {
+function JsonScalarValue({ text, kind, actions, onExpand, onCopy, onOpen }: {
+  text: string; kind: string; actions: boolean; onExpand(): void; onCopy(): void; onOpen(current: boolean): void;
+}): ReactNode {
   return <>
     <span className={`json-value value-${kind}`} title={text}>{text}</span>
-    {expandable && <button className="inline-action" type="button" onClick={(event) => { event.stopPropagation(); onExpand(); }}>{tr('expand')}</button>}
+    {actions && <span className="inline-actions">
+      <button className="inline-action" type="button" title={tr('expand')} aria-label={tr('expand')} onClick={(event) => { event.stopPropagation(); onExpand(); }}><BrowseIcon /></button>
+      <button className="inline-action" type="button" title={tr('copyValue')} aria-label={tr('copyValue')} onClick={(event) => { event.stopPropagation(); onCopy(); }}><CopyIcon /></button>
+      <button className="inline-action" type="button" title={tr('openTempHint')} aria-label={tr('openTemp')} onClick={(event) => { event.stopPropagation(); onOpen(event.altKey); }}><TabIcon /></button>
+    </span>}
   </>;
 }
 
@@ -128,10 +134,10 @@ function ContextMenu({ menu, close }: { menu: MenuState; close(): void }): React
   </div>;
 }
 
-function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, maxDepth = 10, jsonPath, onMenu, onLongText }: {
+function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, maxDepth = 10, jsonPath, onMenu, onLongText, onCopyText, onOpenText }: {
   value: unknown; label?: string; level?: number; initiallyExpanded?: boolean; maxDepth?: number; jsonPath?: string;
   onMenu?(event: React.MouseEvent, key: string | undefined, value: unknown, path?: string): void;
-  onLongText?(text: string): void;
+  onLongText?(text: string): void; onCopyText?(text: string): void; onOpenText?(text: string, current: boolean): void;
 }): ReactNode {
   const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item] as const) : isContainer(value) ? Object.entries(value) : [];
   const expandable = entries.length > 0;
@@ -152,9 +158,9 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{label}</span>
       {expandable ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span>
-        : <JsonScalarValue text={shown} kind={valueKind(value)} expandable={typeof value === 'string'} onExpand={() => onLongText?.(value as string)} />}
+        : <JsonScalarValue text={shown} kind={valueKind(value)} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string)} onCopy={() => onCopyText?.(value as string)} onOpen={(current) => onOpenText?.(value as string, current)} />}
     </div>
-    {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} onMenu={onMenu} onLongText={onLongText} />)}</div>}
+    {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}</div>}
   </>;
 }
 
@@ -163,10 +169,10 @@ interface ServerTreeNodeProps {
   dispatch: React.Dispatch<Parameters<typeof reducer>[1]>;
   requestChildren(node: JsonNodeView, offset: number): void;
   onMenu(event: React.MouseEvent, node: JsonNodeView): void;
-  onLongText(text: string): void;
+  onLongText(text: string): void; onCopyText(text: string): void; onOpenText(text: string, current: boolean): void;
 }
 
-const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tree, summary, dispatch, requestChildren, onMenu, onLongText }: ServerTreeNodeProps): ReactNode {
+const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tree, summary, dispatch, requestChildren, onMenu, onLongText, onCopyText, onOpenText }: ServerTreeNodeProps): ReactNode {
   const node = tree.nodes[nodeId];
   if (!node) throw new Error(`Tree node ${nodeId} is missing.`);
   const expandable = node.childrenCount > 0;
@@ -192,17 +198,17 @@ const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tr
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{node.key ?? '@'}</span>
       {expandable ? <span className={`shape shape-${node.type}`}>{node.type === 'array' ? '[ ]' : '{ }'}&nbsp; {node.childrenCount}</span>
-        : <JsonScalarValue text={text} kind={node.type} expandable={node.type === 'string'} onExpand={() => onLongText(text)} />}
+        : <JsonScalarValue text={text} kind={node.type} actions={node.type === 'string'} onExpand={() => onLongText(text)} onCopy={() => onCopyText(text)} onOpen={(current) => onOpenText(text, current)} />}
       {loading && <span className="loading-label">{tr('loading')}</span>}
     </div>
     {open && <div role="group">
-      {(tree.children[nodeId] ?? []).map((childId) => <ServerTreeNode key={childId} nodeId={childId} level={level + 1} tree={tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onMenu} onLongText={onLongText} />)}
+      {(tree.children[nodeId] ?? []).map((childId) => <ServerTreeNode key={childId} nodeId={childId} level={level + 1} tree={tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}
       {loaded < node.childrenCount && <button className="tree-load-more" type="button" disabled={loading} style={{ '--level': level } as CSSProperties} onClick={() => requestChildren(node, loaded)}>{loading ? tr('loading') : tr('loadMore', { loaded, total: node.childrenCount })}</button>}
     </div>}
   </>;
 }, (previous, next) => {
   if (previous.nodeId !== next.nodeId || previous.level !== next.level || previous.summary !== next.summary || previous.tree.mode !== next.tree.mode) return false;
-  if (previous.dispatch !== next.dispatch || previous.requestChildren !== next.requestChildren || previous.onMenu !== next.onMenu || previous.onLongText !== next.onLongText) return false;
+  if (previous.dispatch !== next.dispatch || previous.requestChildren !== next.requestChildren || previous.onMenu !== next.onMenu || previous.onLongText !== next.onLongText || previous.onCopyText !== next.onCopyText || previous.onOpenText !== next.onOpenText) return false;
   // Expansion changes can belong to a descendant. If an ancestor skips its
   // render here, React never reaches the toggled child, making nested nodes
   // appear unresponsive even though the reducer updated their state.
@@ -245,16 +251,16 @@ function StatusBar({ summary, extra, progress }: { summary: WebviewSummary; extr
   return <div className="statusbar">{items.map((item) => <span key={String(item)}>{item}</span>)}</div>;
 }
 
-function JsonTreeView({ state, dispatch, requestChildren, onServerMenu, onValueMenu, openText }: {
+function JsonTreeView({ state, dispatch, requestChildren, onServerMenu, onValueMenu, openText, copyText, openTextTab }: {
   state: AppState; dispatch: React.Dispatch<Parameters<typeof reducer>[1]>; requestChildren(node: JsonNodeView, offset: number): void;
   onServerMenu(event: React.MouseEvent, node: JsonNodeView): void;
   onValueMenu(event: React.MouseEvent, key: string | undefined, value: unknown, path?: string): void;
-  openText(text: string): void;
+  openText(text: string): void; copyText(text: string): void; openTextTab(text: string, current: boolean): void;
 }): ReactNode {
   const summary = state.summary!;
   if (state.searchResult) return <section className="surface tree-surface">
     <div className="surface-heading"><span className="surface-title">{tr('queryResult')}</span></div>
-    <div className="tree" role="tree" aria-label={tr('queryResultAria')}><ValueTree value={state.searchResult.result} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openText} /></div>
+    <div className="tree" role="tree" aria-label={tr('queryResultAria')}><ValueTree value={state.searchResult.result} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openText} onCopyText={copyText} onOpenText={openTextTab} /></div>
   </section>;
   return <section className="surface tree-surface">
     <div className="surface-heading">
@@ -263,7 +269,7 @@ function JsonTreeView({ state, dispatch, requestChildren, onServerMenu, onValueM
     </div>
     <div className="tree" role="tree" aria-label={tr('structure')}>
       {!summary.root ? <div className="empty-state"><span className="empty-icon">!</span><h2>{tr('invalidJson')}</h2>{(summary.diagnostics ?? []).map((diagnostic) => <div className="error" key={`${diagnostic.offset}-${diagnostic.code}`}>{tr('location', { line: diagnostic.line, column: diagnostic.column })} · {diagnostic.message}</div>)}</div>
-        : <ServerTreeNode nodeId={summary.root.nodeId} level={1} tree={state.tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onServerMenu} onLongText={openText} />}
+        : <ServerTreeNode nodeId={summary.root.nodeId} level={1} tree={state.tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onServerMenu} onLongText={openText} onCopyText={copyText} onOpenText={openTextTab} />}
     </div>
   </section>;
 }
@@ -402,6 +408,10 @@ export function App(): ReactNode {
     window.setTimeout(() => setToast((current) => current === message ? undefined : current), 1600);
   }, []);
   const copied = useCallback((text: string) => { send({ type: 'copy', text }); announce(tr('copied')); }, [announce]);
+  const openTextTab = useCallback((text: string, current: boolean) => {
+    if (current) send({ type: 'openCurrent', text: temporaryText(text) });
+    else send({ type: 'openTemp', text: temporaryText(text) });
+  }, []);
 
   const recordDrawer = useCallback((physicalLine: number, text: string): DrawerState => ({
     title: tr('line', { line: physicalLine }), physicalLine,
@@ -564,13 +574,13 @@ export function App(): ReactNode {
     <Toolbar summary={summary} query={state.view.query ?? ''} onQuery={(query) => dispatch({ type: 'setQuery', query })} onFormat={() => send({ type: 'format' })} onRepair={() => send({ type: 'repair' })} onExport={() => send({ type: 'export', queryRevision: state.queryRevision })} onOpenSource={() => send({ type: 'openSource' })} />
     <StatusBar summary={summary} extra={extra} progress={state.progressRecords} />
     {summary.kind === 'json'
-      ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} />
+      ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} copyText={copied} openTextTab={openTextTab} />
       : <MemoizedJsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} onColumnWidthsChange={onColumnWidthsChange} />}
     {menu && <ContextMenu menu={menu} close={() => setMenu(undefined)} />}
     <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={drawer.actions} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setDrawer(undefined)}>
       {drawer && <div className="drawer-content">
         {drawer.loading ? <div className="drawer-loading"><span className="loading-spinner" aria-hidden /><span>{tr('loading')}</span></div>
-          : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openLongText} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
+          : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openLongText} onCopyText={copied} onOpenText={openTextTab} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
       </div>}
     </Drawer>
     <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setFullText(undefined)}>
