@@ -82,14 +82,14 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .json-key::after { content: ':'; margin-left: 2px; color: var(--muted); font-weight: 400; }
 .shape { color: var(--muted); font-size: 12px; }
 .shape-object, .shape-array { color: var(--vscode-symbolIcon-classForeground, #4ec9b0); }
-.json-value { min-width: 0; max-width: min(70vw, 900px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.json-value { min-width: 0; overflow: hidden; flex: 1 1 auto; text-overflow: ellipsis; white-space: nowrap; }
 .value-string { color: var(--vscode-debugTokenExpression-string, #ce9178); }
 .value-number { color: var(--vscode-debugTokenExpression-number, #b5cea8); }
 .value-boolean { color: var(--vscode-debugTokenExpression-boolean, #569cd6); font-weight: 600; }
 .value-null, .value-undefined { color: var(--muted); font-style: italic; }
 .json-value.value-null, .json-value.value-undefined { flex: 0 0 auto; overflow: visible; padding-inline-end: 2px; }
-.inline-action { flex: 0 0 auto; margin-left: auto; padding: 2px 7px; color: var(--vscode-textLink-foreground); background: transparent; border: 1px solid transparent; border-radius: 4px; opacity: .7; font-size: 11px; white-space: nowrap; }
-.tree-row:hover .inline-action, .inline-action:focus { opacity: 1; }
+.inline-action { flex: 0 0 auto; margin-left: auto; padding: 2px 7px; color: var(--vscode-textLink-foreground); background: transparent; border: 1px solid transparent; border-radius: 4px; opacity: 0; font-size: 11px; white-space: nowrap; }
+.tree-row:hover .inline-action, .inline-action:focus-visible { opacity: 1; }
 .loading-label { margin-left: auto; color: var(--muted); font-size: 11px; }
 .tree-load-more { display: block; margin: 4px 12px 4px calc(10px + var(--level) * 20px); padding: 4px 8px; color: var(--vscode-textLink-foreground); background: transparent; border: 1px solid var(--border); border-radius: 4px; }
 .empty-state { display: grid; justify-items: center; gap: 8px; padding: 38px 20px; color: var(--muted); text-align: center; }
@@ -157,7 +157,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .text-viewer { margin: 0; padding: 18px; overflow-wrap: anywhere; font-family: var(--vscode-editor-font-family); line-height: 1.6; white-space: pre-wrap; }
 .drawer-tree { min-height: 100%; padding-bottom: 24px; }
 .drawer-tree .tree-row { align-items: flex-start; }
-.drawer-tree .json-value:not(.long-value) { flex: 1 1 auto; max-width: none; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: pre-wrap; }
+.drawer-tree .json-value { flex: 1 1 auto; max-width: none; overflow: visible; overflow-wrap: anywhere; text-overflow: clip; white-space: pre-wrap; }
 .toast { position: fixed; z-index: 4000; left: 50%; bottom: 24px; max-width: min(620px, 88vw); padding: 8px 14px; color: var(--vscode-notifications-foreground); background: var(--vscode-notifications-background); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 6px 24px #0006; transform: translateX(-50%); }
 .error-toast { color: var(--vscode-errorForeground); cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }

@@ -12,6 +12,11 @@ function declarations(selector: string): string {
 }
 
 describe('webview drawer styles', () => {
+  it('lets scalar values use the row width instead of a fixed viewport cap', () => {
+    expect(declarations('.json-value')).toMatch(/flex:\s*1 1 auto/);
+    expect(declarations('.json-value')).not.toMatch(/max-width/);
+  });
+
   it('keeps the full-screen drawer host transparent and paints only the content panel', () => {
     expect(declarations('.t-drawer')).toMatch(/background:\s*transparent/);
     expect(declarations('.t-drawer__content-wrapper')).toMatch(/background:\s*var\(--vscode-editorWidget-background\)/);
@@ -29,12 +34,14 @@ describe('webview drawer styles', () => {
     expect(declarations('.drawer-header-actions')).toMatch(/flex:\s*0 1 auto/);
   });
 
-  it('wraps complete short values while keeping the long-value action on one line', () => {
+  it('wraps drawer values while revealing the value action on interaction', () => {
     expect(declarations('.drawer-tree .tree-row')).toMatch(/align-items:\s*flex-start/);
-    expect(declarations('.drawer-tree .json-value:not(.long-value)')).toMatch(/white-space:\s*pre-wrap/);
-    expect(declarations('.drawer-tree .json-value:not(.long-value)')).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(declarations('.drawer-tree .json-value')).toMatch(/white-space:\s*pre-wrap/);
+    expect(declarations('.drawer-tree .json-value')).toMatch(/overflow-wrap:\s*anywhere/);
     expect(declarations('.inline-action')).toMatch(/flex:\s*0 0 auto/);
+    expect(declarations('.inline-action')).toMatch(/opacity:\s*0/);
     expect(declarations('.inline-action')).toMatch(/white-space:\s*nowrap/);
+    expect(declarations('.tree-row:hover .inline-action, .inline-action:focus-visible')).toMatch(/opacity:\s*1/);
   });
 });
 

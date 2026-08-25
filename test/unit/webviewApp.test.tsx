@@ -95,7 +95,7 @@ describe('React webview app', () => {
     expect(temporaryTab.closest('.t-drawer__header')).toBeTruthy();
     expect(screen.getByRole('button', { name: '复制整行' }).closest('.t-drawer__header')).toBeTruthy();
     expect(document.querySelector('.t-drawer__close-btn')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: '查看' })).toBeNull();
+    expect(screen.getByRole('button', { name: '查看' }).classList.contains('inline-action')).toBe(true);
     expect(document.querySelector('.drawer-tree .json-value')?.classList.contains('long-value')).toBe(false);
     expect(document.querySelector<HTMLElement>('.t-drawer__content-wrapper')?.style.width).toBe('66.6667vw');
     const mask = document.querySelector<HTMLElement>('.t-drawer__mask');

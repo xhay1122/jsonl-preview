@@ -25,7 +25,6 @@ function jsonText(value: unknown, pretty = true): string {
 }
 function valueKind(value: unknown): string { return value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value; }
 function isContainer(value: unknown): value is Record<string, unknown> | unknown[] { return value !== null && typeof value === 'object'; }
-function isLong(text: string): boolean { return text.length > 120 || text.includes('\n'); }
 function formatBytes(bytes: number): string { return bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
 function maxAutoDepth(summary: WebviewSummary): number {
   const value = Number(summary.maxAutoExpandDepth);
@@ -91,6 +90,13 @@ interface MenuItem { label: string; action(): void; icon?: ReactNode }
 interface MenuState { x: number; y: number; items: MenuItem[] }
 interface DrawerState { title: string; value?: unknown; text?: string; actions?: ReactNode; physicalLine?: number; loading?: boolean }
 
+function JsonScalarValue({ text, kind, expandable, onExpand }: { text: string; kind: string; expandable: boolean; onExpand(): void }): ReactNode {
+  return <>
+    <span className={`json-value value-${kind}`} title={text}>{text}</span>
+    {expandable && <button className="inline-action" type="button" onClick={(event) => { event.stopPropagation(); onExpand(); }}>{tr('expand')}</button>}
+  </>;
+}
+
 function DrawerHeader({ title, actions }: { title: string; actions?: ReactNode }): ReactNode {
   return <div className="drawer-header-content"><span className="drawer-title">{title}</span>{actions && <div className="drawer-header-actions">{actions}</div>}</div>;
 }
@@ -131,7 +137,6 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
   const expandable = entries.length > 0;
   const [open, setOpen] = useState(expandable && initiallyExpanded && level <= maxDepth);
   const shown = typeof value === 'string' ? value : value === null ? 'null' : isContainer(value) ? '' : String(value);
-  const longText = !expandable && typeof value === 'string' && isLong(value);
   const childPath = (key: string) => jsonPath === undefined ? undefined : Array.isArray(value) ? `${jsonPath}[${key}]` : `${jsonPath}${/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? `.${key}` : `.${JSON.stringify(key)}`}`;
   const toggle = () => { if (expandable) setOpen((current) => !current); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -146,8 +151,8 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
       onContextMenu={(event) => { event.preventDefault(); onMenu?.(event, label === '@' ? undefined : label, value, jsonPath); }}>
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{label}</span>
-      {expandable ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span> : <span className={`json-value value-${valueKind(value)} ${longText ? 'long-value' : ''}`} title={shown}>{shown}</span>}
-      {longText && <button className="inline-action" type="button" onClick={(event) => { event.stopPropagation(); onLongText?.(value); }}>{tr('expand')}</button>}
+      {expandable ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span>
+        : <JsonScalarValue text={shown} kind={valueKind(value)} expandable={typeof value === 'string'} onExpand={() => onLongText?.(value as string)} />}
     </div>
     {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} onMenu={onMenu} onLongText={onLongText} />)}</div>}
   </>;
@@ -186,8 +191,8 @@ const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tr
       onContextMenu={(event) => { event.preventDefault(); onMenu(event, node); }}>
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{node.key ?? '@'}</span>
-      {expandable ? <span className={`shape shape-${node.type}`}>{node.type === 'array' ? '[ ]' : '{ }'}&nbsp; {node.childrenCount}</span> : <span className={`json-value value-${node.type}`} title={text}>{text}</span>}
-      {!expandable && isLong(text) && <button className="inline-action" type="button" onClick={(event) => { event.stopPropagation(); onLongText(text); }}>{tr('expand')}</button>}
+      {expandable ? <span className={`shape shape-${node.type}`}>{node.type === 'array' ? '[ ]' : '{ }'}&nbsp; {node.childrenCount}</span>
+        : <JsonScalarValue text={text} kind={node.type} expandable={node.type === 'string'} onExpand={() => onLongText(text)} />}
       {loading && <span className="loading-label">{tr('loading')}</span>}
     </div>
     {open && <div role="group">
