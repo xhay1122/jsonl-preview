@@ -138,6 +138,33 @@ describe('React webview app', () => {
     expect(document.head.querySelector('style[data-id^="td_drawer_"]')).toBeNull();
   });
 
+  it.each([
+    ['zh-cn', 'zh-CN'],
+    ['en', 'en-US']
+  ])('formats JSONL date cells using the current %s language', async (locale, dateLocale) => {
+    render(<App />);
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init',
+      summary: { kind: 'jsonl', revision: `date-${locale}`, byteLength: 80, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: ['createdAt'], locale, timezone: 'UTC' },
+      uiState: {}
+    } }));
+    const page = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page');
+      expect(found).toBeTruthy();
+      return found;
+    });
+    const value = '2024-01-02T03:04:05Z';
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page',
+      rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: JSON.stringify({ createdAt: value }), cells: { createdAt: value } }],
+      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      queryRevision: page && 'queryRevision' in page ? page.queryRevision : 1
+    } }));
+
+    const expected = new Intl.DateTimeFormat(dateLocale, { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' }).format(new Date(value));
+    expect(await screen.findByText(expected)).toBeTruthy();
+  });
+
   it('loads a complete large record and opens long text in a copyable second drawer', async () => {
     render(<App />);
     window.dispatchEvent(new MessageEvent('message', { data: {

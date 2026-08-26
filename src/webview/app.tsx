@@ -37,13 +37,15 @@ function maxAutoDepth(summary: WebviewSummary): number {
 const PHYSICAL_LINE_SORT = '\u0000physicalLine';
 const ERROR_TOAST_DURATION_MS = 4000;
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
-function dateFormatter(timezone?: string): Intl.DateTimeFormat {
-  const key = timezone && timezone !== 'system' ? timezone : 'system';
+function dateFormatter(locale?: string, timezone?: string): Intl.DateTimeFormat {
+  const language = locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
+  const zone = timezone && timezone !== 'system' ? timezone : 'system';
+  const key = `${language}:${zone}`;
   let formatter = dateFormatters.get(key);
   if (!formatter) {
-    formatter = new Intl.DateTimeFormat(undefined, {
+    formatter = new Intl.DateTimeFormat(language, {
       dateStyle: 'medium', timeStyle: 'medium',
-      ...(key !== 'system' ? { timeZone: key } : {})
+      ...(zone !== 'system' ? { timeZone: zone } : {})
     });
     dateFormatters.set(key, formatter);
   }
@@ -83,7 +85,7 @@ function displayValue(value: unknown, summary: WebviewSummary): { text: string; 
   }
   if (milliseconds !== undefined) {
     try {
-      return { text: dateFormatter(summary.timezone).format(new Date(milliseconds)), title: String(value) };
+      return { text: dateFormatter(summary.locale, summary.timezone).format(new Date(milliseconds)), title: String(value) };
     } catch { /* keep the original value */ }
   }
   if (typeof value === 'string') return { text: value };
