@@ -92,7 +92,17 @@ describe('React webview app', () => {
     expect(await screen.findByText('第 1 行')).toBeTruthy();
     const temporaryTab = screen.getByRole('button', { name: '临时 Tab 打开' });
     expect(temporaryTab.querySelector('.t-icon-tab')).toBeTruthy();
+    expect(temporaryTab.getAttribute('title')).toBe('在临时 Tab 打开（按住 Alt/Option 在当前 Tab 打开）');
     expect(temporaryTab.closest('.t-drawer__header')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '当前 Tab 打开' })).toBeNull();
+    fireEvent.keyDown(window, { key: 'Alt' });
+    const currentTab = screen.getByRole('button', { name: '当前 Tab 打开' });
+    expect(currentTab.querySelector('.t-icon-enter')).toBeTruthy();
+    expect(currentTab.getAttribute('title')).toBe('在当前 Tab 打开');
+    expect(screen.queryByRole('button', { name: '临时 Tab 打开' })).toBeNull();
+    fireEvent.click(currentTab);
+    expect(bridge.messages).toContainEqual({ type: 'openCurrent', text: '{"name":"Ada"}' });
+    fireEvent.keyUp(window, { key: 'Alt' });
     expect(screen.getByRole('button', { name: '复制整行' }).closest('.t-drawer__header')).toBeTruthy();
     expect(document.querySelector('.t-drawer__close-btn')).toBeTruthy();
     expect(screen.getByRole('button', { name: '查看' }).classList.contains('inline-action')).toBe(true);
@@ -101,6 +111,10 @@ describe('React webview app', () => {
     expect(inlineActions[0]?.querySelector('.t-icon-browse')).toBeTruthy();
     expect(inlineActions[1]?.querySelector('.t-icon-copy')).toBeTruthy();
     expect(inlineActions[2]?.querySelector('.t-icon-tab')).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Alt' });
+    expect(inlineActions[2]?.getAttribute('aria-label')).toBe('在当前 Tab 打开');
+    expect(inlineActions[2]?.querySelector('.t-icon-enter')).toBeTruthy();
+    fireEvent.keyUp(window, { key: 'Alt' });
     fireEvent.click(inlineActions[1]!);
     expect(bridge.messages).toContainEqual({ type: 'copy', text: 'Ada' });
     fireEvent.click(inlineActions[2]!);
@@ -212,8 +226,8 @@ describe('React webview app', () => {
     expect(screen.getByRole('menuitem', { name: 'Copy Row' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' }).querySelector('.t-icon-tab')).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' }).querySelector('.t-icon-tab')).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Row)' }).querySelector('.t-icon-browse')).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Cell)' }).querySelector('.t-icon-browse')).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Current Tab (Row)' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Current Tab (Cell)' })).toBeNull();
     expect(screen.getAllByRole('menuitem')).not.toContain(document.activeElement);
     await userEvent.click(screen.getByRole('menuitem', { name: 'Copy Cell' }));
     expect(bridge.messages).toContainEqual({ type: 'copy', text: 'Ada' });
@@ -227,19 +241,25 @@ describe('React webview app', () => {
     expect(bridge.messages).toContainEqual({ type: 'openTemp', physicalLine: 1 });
 
     fireEvent.contextMenu(screen.getByText('Ada'));
+    fireEvent.keyDown(window, { key: 'Alt' });
+    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Cell)' }).querySelector('.t-icon-enter')).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' })).toBeNull();
     await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Current Tab (Cell)' }));
     expect(bridge.messages).toContainEqual({ type: 'openCurrent', physicalLine: 1, field: 'name' });
+    fireEvent.keyUp(window, { key: 'Alt' });
 
     fireEvent.contextMenu(screen.getByText('Ada'));
+    fireEvent.keyDown(window, { key: 'Alt' });
     await userEvent.click(screen.getByRole('menuitem', { name: 'Open in Current Tab (Row)' }));
     expect(bridge.messages).toContainEqual({ type: 'openCurrent', physicalLine: 1 });
+    fireEvent.keyUp(window, { key: 'Alt' });
 
     fireEvent.contextMenu(screen.getByText('—'));
     expect(screen.getByRole('menuitem', { name: 'Copy Cell' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Open in Temporary Tab (Cell)' })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab (Row)' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Open in Current Tab (Cell)' })).toBeNull();
-    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab (Row)' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Current Tab (Row)' })).toBeNull();
 
     expect(fireEvent.contextMenu(document.querySelector('main')!)).toBe(false);
     expect(screen.queryByRole('menu')).toBeNull();
@@ -313,10 +333,10 @@ describe('React webview app', () => {
     expect(bridge.messages).toContainEqual(expect.objectContaining({ type: 'children', nodeId: 'root', offset: 1 }));
   });
 
-  it('uses distinct icons for property, value, JSONPath, and temporary-tab actions', async () => {
+  it('uses consistent semantic icons for property, value, JSONPath, viewing, and tab actions', async () => {
     render(<App />);
     const root = { nodeId: 'root', type: 'object', offset: 0, length: 12, childrenCount: 1, pointer: '', jsonPath: '@' };
-    const child = { nodeId: 'child', key: 'answer', type: 'number', offset: 10, length: 2, childrenCount: 0, pointer: '/answer', jsonPath: '@.answer', displayValue: '42', rawText: '42' };
+    const child = { nodeId: 'child', key: 'answer', type: 'string', offset: 10, length: 4, childrenCount: 0, pointer: '/answer', jsonPath: '@.answer', displayValue: '42', rawText: '"42"' };
     window.dispatchEvent(new MessageEvent('message', { data: {
       type: 'init', summary: { kind: 'json', revision: 'menu-icons', byteLength: 12, parseMilliseconds: 1, errors: 0, root, children: [child], locale: 'en' }, uiState: {}
     } }));
@@ -326,9 +346,13 @@ describe('React webview app', () => {
     expect(screen.getByRole('menuitem', { name: 'Copy Value' }).querySelector('.t-icon-copy')).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Copy JSONPath' }).querySelector('.t-icon-code')).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'Open in Temporary Tab' }).querySelector('.t-icon-tab')).toBeTruthy();
-    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab' }).querySelector('.t-icon-browse')).toBeTruthy();
-    const actions = screen.getAllByRole('menuitem').map((item) => item.getAttribute('aria-label') ?? item.textContent);
-    expect(actions.indexOf('Open in Current Tab')).toBe(actions.indexOf('Open in Temporary Tab') + 1);
+    expect(screen.queryByRole('menuitem', { name: 'Open in Current Tab' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'View' }).querySelector('.t-icon-browse')).toBeTruthy();
+    expect(screen.getAllByRole('menuitem')).toHaveLength(5);
+    fireEvent.keyDown(window, { key: 'Alt' });
+    expect(screen.getByRole('menuitem', { name: 'Open in Current Tab' }).querySelector('.t-icon-enter')).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Open in Temporary Tab' })).toBeNull();
+    fireEvent.keyUp(window, { key: 'Alt' });
   });
 
   it('renders nested children as soon as their async page arrives', async () => {

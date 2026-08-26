@@ -71,7 +71,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .surface-title { font-weight: 650; }
 
 .tree { min-height: 80px; padding: 6px 0 10px; font-family: var(--vscode-editor-font-family); }
-.tree-row { --indent: calc(var(--level) * 20px); position: relative; display: flex; min-width: 0; align-items: flex-start; gap: 8px; min-height: 30px; padding: 5px 12px 5px calc(10px + var(--indent)); border-left: 2px solid transparent; cursor: default; user-select: text; }
+.tree-row { --indent: calc(var(--level) * 20px); position: relative; display: flex; min-width: 0; align-items: flex-start; gap: 8px; min-height: 36px; padding: 8px 12px 8px calc(10px + var(--indent)); border-left: 2px solid transparent; cursor: default; user-select: text; }
 .tree-row.expandable { cursor: pointer; }
 .tree-row:hover { background: var(--vscode-list-hoverBackground); }
 .tree-row:focus { background: var(--vscode-list-focusBackground); border-left-color: var(--vscode-focusBorder); outline: none; }
@@ -88,11 +88,11 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .value-boolean { color: var(--vscode-debugTokenExpression-boolean, #569cd6); font-weight: 600; }
 .value-null, .value-undefined { color: var(--muted); font-style: italic; }
 .json-value.value-null, .json-value.value-undefined { flex: 0 0 auto; overflow: visible; padding-inline-end: 2px; }
-.inline-actions { --action-surface: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 94%, transparent); position: absolute; z-index: 2; top: 5px; right: 10px; display: flex; gap: 2px; padding: 2px; background: var(--action-surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 2px 8px #0002; opacity: 0; pointer-events: none; transform: translateX(4px); transition: opacity 120ms ease, transform 120ms ease; }
+.inline-actions { --action-surface: color-mix(in srgb, var(--vscode-editorWidget-background, var(--vscode-editor-background)) 94%, transparent); position: absolute; z-index: 2; top: 50%; right: 10px; display: flex; gap: 2px; padding: 2px; background: var(--action-surface); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 2px 8px #0002; opacity: 0; pointer-events: none; transform: translate(4px, -50%); transition: opacity 120ms ease, transform 120ms ease; }
 .inline-action { display: grid; width: 26px; height: 26px; place-items: center; padding: 4px; color: var(--muted); background: transparent; border: 0; border-radius: 5px; }
 .inline-action svg { width: 16px; height: 16px; }
 .inline-action:hover, .inline-action:focus-visible { color: var(--vscode-textLink-foreground); background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
-.tree-row:hover .inline-actions, .inline-actions:focus-within { opacity: 1; pointer-events: auto; transform: translateX(0); }
+.tree-row:hover .inline-actions, .inline-actions:focus-within { opacity: 1; pointer-events: auto; transform: translate(0, -50%); }
 .loading-label { margin-left: auto; color: var(--muted); font-size: 11px; }
 .tree-load-more { display: block; margin: 4px 12px 4px calc(10px + var(--level) * 20px); padding: 4px 8px; color: var(--vscode-textLink-foreground); background: transparent; border: 1px solid var(--border); border-radius: 4px; }
 .empty-state { display: grid; justify-items: center; gap: 8px; padding: 38px 20px; color: var(--muted); text-align: center; }

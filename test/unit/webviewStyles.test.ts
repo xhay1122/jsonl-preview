@@ -50,13 +50,16 @@ describe('webview drawer styles', () => {
     expect(declarations('.json-value')).toMatch(/white-space:\s*normal/);
     expect(declarations('.json-value')).toMatch(/overflow-wrap:\s*anywhere/);
     expect(declarations('.tree-row')).toMatch(/position:\s*relative/);
+    expect(declarations('.tree-row')).toMatch(/min-height:\s*36px/);
     expect(declarations('.inline-actions')).toMatch(/position:\s*absolute/);
+    expect(declarations('.inline-actions')).toMatch(/top:\s*50%/);
     expect(declarations('.inline-actions')).toMatch(/opacity:\s*0/);
-    expect(declarations('.inline-actions')).toMatch(/transform:\s*translateX\(4px\)/);
+    expect(declarations('.inline-actions')).toMatch(/transform:\s*translate\(4px, -50%\)/);
     expect(styles).not.toMatch(/\.inline-actions::before\s*\{/);
     expect(declarations('.inline-action')).toMatch(/width:\s*26px/);
     expect(declarations('.tree-row:hover .inline-actions, .inline-actions:focus-within')).toMatch(/opacity:\s*1/);
     expect(declarations('.tree-row:hover .inline-actions, .inline-actions:focus-within')).toMatch(/pointer-events:\s*auto/);
+    expect(declarations('.tree-row:hover .inline-actions, .inline-actions:focus-within')).toMatch(/transform:\s*translate\(0, -50%\)/);
   });
 });
 
