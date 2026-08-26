@@ -66,6 +66,7 @@ export interface JsonlRow {
   /** The page response contains only a preview; fetch the physical line before using it. */
   rawTruncated?: boolean;
   cells: Record<string, unknown>;
+  truncatedCells?: string[];
   error?: Diagnostic;
 }
 
@@ -75,8 +76,10 @@ export interface SessionSummary {
   byteLength: number;
   parseMilliseconds: number;
   errors: number;
+  errorsComplete?: boolean;
   recordCount?: number;
   fields?: string[];
+  fieldPointers?: Record<string, string>;
   root?: JsonNodeView;
   children?: JsonNodeView[];
   diagnostics?: Diagnostic[];

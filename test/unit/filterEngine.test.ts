@@ -9,7 +9,9 @@ describe('filter engine', () => {
     expect(compareDecimals('-1e-100', '-2e-100')).toBe(1);
   });
   it('uses RFC 6901 pointers without confusing dots', () => {
-    const value = { 'a.b': 1, a: { b: 2 }, 'a/b': { '~x': 3 } };
+    const value = { '': 0, 'a.b': 1, a: { b: 2 }, 'a/b': { '~x': 3 } };
+    expect(valueAtPointer(value, '')).toBe(value);
+    expect(valueAtPointer(value, '/')).toBe(0);
     expect(valueAtPointer(value, '/a.b')).toBe(1);
     expect(valueAtPointer(value, '/a/b')).toBe(2);
     expect(valueAtPointer(value, '/a~1b/~0x')).toBe(3);

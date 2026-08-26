@@ -4,7 +4,7 @@ import { PreviewError } from '../shared/errors.js';
 export const MISSING = Symbol('missing');
 
 export function valueAtPointer(value: unknown, pointer: string): unknown | typeof MISSING {
-  if (pointer === '' || pointer === '/') return value;
+  if (pointer === '') return value;
   if (!pointer.startsWith('/')) return MISSING;
   let current: unknown = value;
   for (const encoded of pointer.slice(1).split('/')) {

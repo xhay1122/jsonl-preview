@@ -2,7 +2,7 @@ import { open, stat, type FileHandle } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import type { ByteOffset, Diagnostic, Filter, JsonlRow, LineMeta, SortSpec } from '../shared/types.js';
 import type { PreviewSettings } from '../shared/settings.js';
-import { compareForSort, matchesFilter } from './filterEngine.js';
+import { compareForSort, matchesFilter, MISSING, valueAtPointer } from './filterEngine.js';
 import { PreviewError } from '../shared/errors.js';
 import { parseTree, type Node } from 'jsonc-parser';
 import { compile as compileJmesPath, search as jmespathSearch } from 'jmespath';
@@ -40,22 +40,39 @@ class CompactLineIndex {
     return { physicalLine: index + 1, startByte: this.starts[chunkIndex]![offset]! as ByteOffset, contentByteLength: this.lengths[chunkIndex]![offset]!, eolByteLength: attribute % 4 as 0 | 1 | 2, status: codeStatus[Math.floor(attribute / 4)]! };
   }
 
-  setStatus(index: number, status: LineMeta['status']): void {
+  setStatus(index: number, status: LineMeta['status']): LineMeta['status'] {
     const chunkIndex = Math.floor(index / LINE_CHUNK_SIZE), offset = index % LINE_CHUNK_SIZE;
-    const eol = this.attributes[chunkIndex]![offset]! % 4;
+    const attribute = this.attributes[chunkIndex]![offset]!;
+    const previous = codeStatus[Math.floor(attribute / 4)]!;
+    const eol = attribute % 4;
     this.attributes[chunkIndex]![offset] = statusCode[status]! * 4 + eol;
+    return previous;
   }
 }
 
-function flatten(value: unknown, prefix = '', output: Record<string, unknown> = {}, depth = 0): Record<string, unknown> {
-  if (depth > 8 || Object.keys(output).length >= 200) return output;
+interface CollectedCells { cells: Record<string, unknown>; pointers: Record<string, string>; count: number }
+
+function pointerSegment(value: string): string { return value.replace(/~/g, '~0').replace(/\//g, '~1'); }
+function fieldLabel(prefix: string, key: string): string {
+  return key.length > 0 && key !== '$' && !/[.\[\]]/.test(key)
+    ? (prefix ? `${prefix}.${key}` : key)
+    : `${prefix}[${JSON.stringify(key)}]`;
+}
+function emptyCells(): CollectedCells {
+  return { cells: Object.create(null) as Record<string, unknown>, pointers: Object.create(null) as Record<string, string>, count: 0 };
+}
+function flatten(value: unknown, prefix = '', pointer = '', result: CollectedCells = emptyCells(), depth = 0): CollectedCells {
+  if (depth > 8 || result.count >= 200) return result;
   if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
     for (const [key, child] of Object.entries(value)) {
-      const label = prefix ? `${prefix}.${key}` : key;
-      if (child !== null && typeof child === 'object' && !Array.isArray(child)) flatten(child, label, output, depth + 1); else output[label] = child;
+      if (result.count >= 200) break;
+      const label = fieldLabel(prefix, key);
+      const childPointer = `${pointer}/${pointerSegment(key)}`;
+      if (child !== null && typeof child === 'object' && !Array.isArray(child)) flatten(child, label, childPointer, result, depth + 1);
+      else { result.cells[label] = child; result.pointers[label] = childPointer; result.count++; }
     }
-  } else output.$ = value;
-  return output;
+  } else { result.cells.$ = value; result.pointers.$ = ''; result.count++; }
+  return result;
 }
 function previewValue(value: unknown): unknown {
   if (typeof value === 'string' && value.length > 4096) return `${value.slice(0, 4096)}…`;
@@ -87,7 +104,6 @@ function filterNeedsExactNumbers(filter: Filter | undefined): boolean {
 function byteChunks(buffer: Uint8Array): AsyncIterable<Uint8Array> {
   return (async function* () { yield buffer; })();
 }
-function pointerSegment(value: string): string { return value.replace(/~/g, '~0').replace(/\//g, '~1'); }
 function collectExactNumbers(node: Node | undefined, raw: string, pointer = '', output = new Map<string, string>()): Map<string, string> {
   if (!node) return output;
   const pending: Array<{ node: Node; pointer: string }> = [{ node, pointer }];
@@ -103,6 +119,7 @@ function collectExactNumbers(node: Node | undefined, raw: string, pointer = '', 
 export class JsonlIndex {
   private readonly lines = new CompactLineIndex();
   readonly fields: string[] = [];
+  readonly fieldPointers: Record<string, string> = Object.create(null) as Record<string, string>;
   private readonly fieldSet = new Set<string>();
   private readonly cache = new Map<number, CachedLine>();
   private cacheBytes = 0;
@@ -114,6 +131,8 @@ export class JsonlIndex {
   private byteLength = 0;
   private sourcePath?: string;
   private sourceSignature?: { size: number; mtimeMs: number; dev: number; ino: number };
+  private knownErrors = 0;
+  private unparsedLines = 0;
 
   constructor(readonly settings: PreviewSettings) {}
 
@@ -125,6 +144,31 @@ export class JsonlIndex {
   private appendLine(startByte: number, contentByteLength: number, eolByteLength: 0 | 1 | 2, status: LineMeta['status']): void {
     if (this.lines.length >= this.maxIndexedLines) throw new PreviewError('INDEX_LIMIT', `The file exceeds the line-index budget of ${this.maxIndexedLines.toLocaleString()} records. Increase queryCacheMB or use a file with fewer records.`);
     this.lines.push(startByte, contentByteLength, eolByteLength, status);
+    if (status === 'unparsed') this.unparsedLines++;
+    else if (this.isErrorStatus(status)) this.knownErrors++;
+  }
+
+  private isErrorStatus(status: LineMeta['status']): boolean {
+    return status === 'invalid' || status === 'tooLarge' || (!this.settings.ignoreEmptyLines && status === 'empty');
+  }
+
+  private markStatus(index: number, status: LineMeta['status']): void {
+    // Requests are handled concurrently by the worker. Atomically replace and
+    // read the status at commit time so two parsers that both started from
+    // `unparsed` cannot decrement the pending count twice.
+    const previous = this.lines.setStatus(index, status);
+    if (previous === status) return;
+    if (previous === 'unparsed') this.unparsedLines--;
+    else if (this.isErrorStatus(previous)) this.knownErrors--;
+    if (status === 'unparsed') this.unparsedLines++;
+    else if (this.isErrorStatus(status)) this.knownErrors++;
+  }
+
+  private registerCells(collected: CollectedCells): void {
+    for (const field of Object.keys(collected.cells)) {
+      if (!this.fieldSet.has(field) && this.fields.length < 200) { this.fieldSet.add(field); this.fields.push(field); }
+      if (this.fieldSet.has(field)) this.fieldPointers[field] = collected.pointers[field] ?? '';
+    }
   }
 
   async openText(text: string, progress?: Progress): Promise<void> {
@@ -209,9 +253,10 @@ export class JsonlIndex {
     const cached = this.cache.get(index);
     if (cached) {
       if (options.cells && !cached.value.cellsCollected) {
-        cached.value.cells = flatten(cached.value.value);
+        const collected = flatten(cached.value.value);
+        cached.value.cells = collected.cells;
         cached.value.cellsCollected = true;
-        for (const field of Object.keys(cached.value.cells)) if (!this.fieldSet.has(field) && this.fields.length < 200) { this.fieldSet.add(field); this.fields.push(field); }
+        this.registerCells(collected);
       }
       if (options.exactNumbers && !cached.value.exactCollected) { cached.value.exactNumbers = collectExactNumbers(parseTree(cached.value.raw), cached.value.raw); cached.value.exactCollected = true; }
       this.cache.delete(index); this.cache.set(index, cached);
@@ -230,12 +275,13 @@ export class JsonlIndex {
         let raw = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
         if (meta.physicalLine === 1 && raw.charCodeAt(0) === 0xfeff) raw = raw.slice(1);
         const value: unknown = JSON.parse(raw);
-        this.lines.setStatus(index, 'valid');
-        const cells = options.cells ? flatten(value) : {};
-        if (options.cells) for (const field of Object.keys(cells)) if (!this.fieldSet.has(field) && this.fields.length < 200) { this.fieldSet.add(field); this.fields.push(field); }
+        this.markStatus(index, 'valid');
+        const collected = options.cells ? flatten(value) : undefined;
+        const cells = collected?.cells ?? {};
+        if (collected) this.registerCells(collected);
         parsed = { raw, value, cells, cellsCollected: options.cells, exactNumbers: options.exactNumbers ? collectExactNumbers(parseTree(raw), raw) : new Map(), exactCollected: options.exactNumbers };
       } catch (error) {
-        this.lines.setStatus(index, 'invalid');
+        this.markStatus(index, 'invalid');
         const raw = new TextDecoder().decode(await this.bytes(meta));
         const match = /position (\d+)/.exec(error instanceof Error ? error.message : '');
         const column = Number(match?.[1] ?? 0) + 1;
@@ -352,8 +398,13 @@ export class JsonlIndex {
       const meta = this.lines.get(lineIndex);
       const rawTruncated = parsed.raw.length > 16_384;
       const raw = rawTruncated ? `${parsed.raw.slice(0, 16_384)}…` : parsed.raw;
-      const cells = Object.fromEntries(Object.entries(parsed.cells).map(([key, value]) => [key, previewValue(value)]));
-      const row = { resultIndex: position + 1, physicalLine: meta.physicalLine, status: meta.status, raw, ...(rawTruncated ? { rawTruncated: true } : {}), cells, ...(parsed.diagnostic ? { error: parsed.diagnostic } : {}) } satisfies JsonlRow;
+      const truncatedCells: string[] = [];
+      const cells = Object.create(null) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(parsed.cells)) {
+        if (typeof value === 'string' && value.length > 4096) truncatedCells.push(key);
+        cells[key] = previewValue(value);
+      }
+      const row = { resultIndex: position + 1, physicalLine: meta.physicalLine, status: meta.status, raw, ...(rawTruncated ? { rawTruncated: true } : {}), cells, ...(truncatedCells.length ? { truncatedCells } : {}), ...(parsed.diagnostic ? { error: parsed.diagnostic } : {}) } satisfies JsonlRow;
       const size = Buffer.byteLength(JSON.stringify(row)); if (result.length && estimatedBytes + size > 900 * 1024) break; estimatedBytes += size; result.push(row);
     }
     return result;
@@ -375,6 +426,16 @@ export class JsonlIndex {
     const content = temporaryText(parsed.cells[field]);
     await this.ensureSourceUnchanged();
     return content;
+  }
+
+  async cellValueText(physicalLine: number, pointer: string, format: 'plain' | 'json' = 'plain'): Promise<string> {
+    await this.ensureSourceUnchanged();
+    const parsed = await this.parseLine(physicalLine - 1, { cache: true, cells: false, exactNumbers: false });
+    const value = parsed.value === undefined ? MISSING : valueAtPointer(parsed.value, pointer);
+    if (value === MISSING) throw new PreviewError('CELL_NOT_FOUND', 'The requested cell no longer exists.');
+    const content = format === 'json' ? temporaryText(value) : typeof value === 'string' ? value : JSON.stringify(value);
+    await this.ensureSourceUnchanged();
+    return content === undefined ? String(value) : content;
   }
 
   async export(queryId: string, format: 'jsonl' | 'json', maxBytes: number): Promise<string> {
@@ -409,10 +470,7 @@ export class JsonlIndex {
   get sourceByteLength(): number { return this.byteLength; }
   get lineCount(): number { return this.lines.length; }
   lineMetadata(index: number): LineMeta { return this.lines.get(index); }
-  get errorCount(): number {
-    let count = 0;
-    for (let index = 0; index < this.lines.length; index++) { const status = this.lines.get(index).status; if (status === 'invalid' || status === 'tooLarge' || (!this.settings.ignoreEmptyLines && status === 'empty')) count++; }
-    return count;
-  }
+  get errorCount(): number { return this.knownErrors; }
+  get errorsComplete(): boolean { return this.unparsedLines === 0; }
   async close(): Promise<void> { await this.file?.close(); this.cache.clear(); this.queries.clear(); this.cacheBytes = 0; this.queryBytes = 0; delete this.fileReadWindow; }
 }

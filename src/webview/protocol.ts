@@ -30,14 +30,18 @@ export type WebviewRequest =
   | { type: 'revealLine'; line: number }
   | { type: 'copy'; text: string }
   | { type: 'copy'; nodeId: string; format: 'raw' | 'compact' | 'pretty' }
+  | { type: 'copy'; physicalLine: number }
+  | { type: 'copy'; physicalLine: number; pointer: string }
   | { type: 'openTemp'; text: string }
   | { type: 'openTemp'; nodeId: string }
   | { type: 'openTemp'; physicalLine: number }
   | { type: 'openTemp'; physicalLine: number; field: string }
+  | { type: 'openTemp'; physicalLine: number; pointer: string }
   | { type: 'openCurrent'; text: string }
   | { type: 'openCurrent'; nodeId: string }
   | { type: 'openCurrent'; physicalLine: number }
   | { type: 'openCurrent'; physicalLine: number; field: string }
+  | { type: 'openCurrent'; physicalLine: number; pointer: string }
   | { type: 'openSource' }
   | { type: 'format' }
   | { type: 'repair' }
@@ -47,8 +51,9 @@ export type WebviewRequest =
 export type HostMessage =
   | { type: 'init'; summary: WebviewSummary; uiState?: ViewState }
   | { type: 'children'; parentId: string; generation: number; offset: number; nodes: JsonNodeView[] }
-  | { type: 'page'; rows: JsonlRow[]; total: number; scannedRows: number; matchedRows: number; isComplete: boolean; offset: number; queryRevision: number }
+  | { type: 'page'; rows: JsonlRow[]; total: number; scannedRows: number; matchedRows: number; isComplete: boolean; errors?: number; errorsComplete?: boolean; offset: number; queryRevision: number }
   | { type: 'record'; physicalLine: number; content: string }
+  | { type: 'copied' }
   | { type: 'progress'; records: number; scannedBytes?: number; totalBytes?: number; revision?: string }
   | { type: 'search'; query: string; result: unknown; searchRevision: number }
   | { type: 'error'; message: string };
@@ -66,6 +71,7 @@ export function isHostMessage(value: unknown): value is HostMessage {
   if (message.type === 'children') return typeof message.parentId === 'string' && Number.isInteger(message.generation) && Number.isInteger(message.offset) && Array.isArray(message.nodes);
   if (message.type === 'page') return Array.isArray(message.rows) && Number.isFinite(message.total) && Number.isInteger(message.offset) && Number.isInteger(message.queryRevision);
   if (message.type === 'record') return Number.isSafeInteger(message.physicalLine) && Number(message.physicalLine) > 0 && typeof message.content === 'string';
+  if (message.type === 'copied') return true;
   if (message.type === 'progress') return Number.isFinite(message.records);
   if (message.type === 'search') return typeof message.query === 'string' && Number.isInteger(message.searchRevision) && 'result' in message;
   if (message.type === 'error') return typeof message.message === 'string';

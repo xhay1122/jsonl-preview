@@ -20,6 +20,8 @@ export interface PageState {
   scannedRows: number;
   matchedRows: number;
   isComplete: boolean;
+  errors?: number;
+  errorsComplete?: boolean;
 }
 
 export interface AppState {
@@ -119,7 +121,13 @@ export function createInitialState(view: ViewState = {}): AppState {
 export function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'init': {
-      const view = sanitizeViewState({ ...state.view, ...sanitizeViewState(action.view) });
+      const restoredView = sanitizeViewState({ ...state.view, ...sanitizeViewState(action.view) });
+      const availableFields = new Set(action.summary.fields ?? []);
+      let view = restoredView;
+      if (restoredView.sort && restoredView.sort.field !== '\u0000physicalLine' && !availableFields.has(restoredView.sort.field)) {
+        const { sort: _invalidSort, ...validView } = restoredView;
+        view = validView;
+      }
       const timestampField = action.summary.kind === 'jsonl'
         ? action.summary.fields?.find((field) => field.toLowerCase() === 'timestamp')
         : undefined;
@@ -146,9 +154,20 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'startQuery': return { ...state, queryRevision: action.queryRevision, requestedOffset: 0, page: { ...state.page, offset: 0 } };
     case 'requestPage': return { ...state, requestedOffset: action.offset };
     case 'startSearch': return { ...state, searchRevision: action.searchRevision };
-    case 'page':
+    case 'page': {
       if (action.queryRevision !== state.queryRevision || action.offset !== state.requestedOffset) return state;
-      return { ...state, page: { ...action.page, offset: action.offset, loaded: true }, progressRecords: undefined };
+      let summary = state.summary;
+      if (summary && action.page.errors !== undefined
+        && (summary.errors !== action.page.errors || action.page.errorsComplete !== undefined && summary.errorsComplete !== action.page.errorsComplete)) {
+        summary = { ...summary, errors: action.page.errors, ...(action.page.errorsComplete === undefined ? {} : { errorsComplete: action.page.errorsComplete }) };
+      }
+      return {
+        ...state,
+        summary,
+        page: { ...action.page, offset: action.offset, loaded: true },
+        progressRecords: undefined
+      };
+    }
     case 'search':
       if (action.searchRevision !== state.searchRevision) return state;
       return { ...state, searchResult: { query: action.query, result: action.result } };

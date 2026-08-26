@@ -20,6 +20,13 @@ describe('webview state reducer', () => {
     expect(state.page.loaded).toBe(false);
   });
 
+  it('updates known error progress from accepted pages', () => {
+    let state = reducer(createInitialState(), { type: 'init', summary: { ...summary, errorsComplete: false } });
+    state = reducer(state, { type: 'startQuery', queryRevision: 1 });
+    state = reducer(state, { type: 'page', queryRevision: 1, offset: 0, page: { rows, total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, errors: 1, errorsComplete: true } });
+    expect(state.summary).toEqual(expect.objectContaining({ errors: 1, errorsComplete: true }));
+  });
+
   it('can clear a custom sort and restore the original order', () => {
     let state = createInitialState({ sort: { field: 'name', direction: 'desc' } });
     state = reducer(state, { type: 'setSort' });
@@ -45,6 +52,11 @@ describe('webview state reducer', () => {
 
     const indexState = reducer(createInitialState({ sort: null }), { type: 'init', summary: timestampSummary });
     expect(indexState.view.sort).toBeNull();
+  });
+
+  it('drops a persisted sort whose field no longer exists', () => {
+    const state = reducer(createInitialState({ sort: { field: 'a.b', direction: 'asc' } }), { type: 'init', summary: { ...summary, fields: ['["a.b"]'] } });
+    expect(state.view.sort).toBeUndefined();
   });
 
   it('rejects an older page navigation response within the same query', () => {

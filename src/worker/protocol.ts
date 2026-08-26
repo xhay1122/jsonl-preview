@@ -12,13 +12,14 @@ export type WorkerRequest =
   | { type: 'jsonl/getPage'; requestId: string; sessionId: string; revision: string; queryId: string; queryRevision: number; offset: number; limit: number }
   | { type: 'jsonl/getRecord'; requestId: string; sessionId: string; revision: string; physicalLine: number }
   | { type: 'jsonl/getCell'; requestId: string; sessionId: string; revision: string; physicalLine: number; field: string }
+  | { type: 'jsonl/getCellValue'; requestId: string; sessionId: string; revision: string; physicalLine: number; pointer: string; format: 'plain' | 'json' }
   | { type: 'jsonl/applyQuery'; requestId: string; sessionId: string; revision: string; queryId: string; queryRevision: number; filter?: Filter; sort?: SortSpec; jmesPath?: string }
   | { type: 'jsonl/export'; requestId: string; sessionId: string; revision: string; queryId: string; queryRevision: number; format: 'jsonl' | 'json'; maxBytes: number }
   | { type: 'jsonl/exportToTemp'; requestId: string; sessionId: string; revision: string; queryId: string; queryRevision: number; format: 'jsonl' | 'json'; path: string }
   | { type: 'request/cancel'; requestId: string; sessionId: string; targetRequestId: string }
   | { type: 'session/dispose'; requestId: string; sessionId: string };
 
-export type WorkerData = SessionSummary | { nodes: JsonNodeView[] } | { result: unknown } | { rows: JsonlRow[]; total: number; scannedRows: number; matchedRows: number; isComplete: boolean } | { content: string } | { path: string; records: number; bytes: number } | { edits: Array<{ offset: number; length: number; text: string }> } | { disposed: true };
+export type WorkerData = SessionSummary | { nodes: JsonNodeView[] } | { result: unknown } | { rows: JsonlRow[]; total: number; scannedRows: number; matchedRows: number; isComplete: boolean; errors: number; errorsComplete: boolean } | { content: string } | { path: string; records: number; bytes: number } | { edits: Array<{ offset: number; length: number; text: string }> } | { disposed: true };
 export type WorkerResponse =
   | { requestId: string; sessionId: string; ok: true; revision: string; queryRevision?: number; data: WorkerData }
   | { requestId: string; sessionId: string; ok: false; revision?: string; code: string; message: string };
@@ -44,7 +45,7 @@ function validFilter(value: unknown, depth = 0): value is Filter {
   if (!value || typeof value !== 'object' || depth > 12) return false;
   const filter = value as Record<string, unknown>;
   if (filter.op === 'and') return Array.isArray(filter.items) && filter.items.length <= 32 && filter.items.every((item) => validFilter(item, depth + 1));
-  if (typeof filter.path !== 'string' || filter.path.length > 2048 || !filter.path.startsWith('/')) return false;
+  if (typeof filter.path !== 'string' || filter.path.length > 2048 || !(filter.path === '' || filter.path.startsWith('/'))) return false;
   if (filter.op === 'exists' || filter.op === 'isNull') return true;
   if (filter.op === 'contains') return typeof filter.value === 'string' && filter.value.length <= 4096;
   if (filter.op === 'compare') {
@@ -62,7 +63,7 @@ function validSort(value: unknown): value is SortSpec {
   const sort = value as Record<string, unknown>;
   if (sort.direction !== 'asc' && sort.direction !== 'desc') return false;
   if (sort.by === 'physicalLine') return sort.path === undefined && sort.nulls === undefined;
-  return sort.by === undefined && typeof sort.path === 'string' && sort.path.startsWith('/') && sort.path.length <= 2048 && (sort.nulls === undefined || sort.nulls === 'first' || sort.nulls === 'last');
+  return sort.by === undefined && typeof sort.path === 'string' && (sort.path === '' || sort.path.startsWith('/')) && sort.path.length <= 2048 && (sort.nulls === undefined || sort.nulls === 'first' || sort.nulls === 'last');
 }
 export function validateWorkerRequest(value: unknown): value is WorkerRequest {
   if (!value || typeof value !== 'object') return false;
@@ -72,6 +73,7 @@ export function validateWorkerRequest(value: unknown): value is WorkerRequest {
   if (request.type === 'jsonl/getPage') return typeof request.queryId === 'string' && request.queryId.length <= MAX_ID && Number.isSafeInteger(request.queryRevision) && Number(request.queryRevision) >= 0 && Number.isSafeInteger(request.offset) && Number(request.offset) >= 0 && Number.isInteger(request.limit) && Number(request.limit) > 0 && Number(request.limit) <= 1000;
   if (request.type === 'jsonl/getRecord') return Number.isSafeInteger(request.physicalLine) && Number(request.physicalLine) > 0;
   if (request.type === 'jsonl/getCell') return Number.isSafeInteger(request.physicalLine) && Number(request.physicalLine) > 0 && typeof request.field === 'string' && request.field.length > 0 && request.field.length <= 2048;
+  if (request.type === 'jsonl/getCellValue') return Number.isSafeInteger(request.physicalLine) && Number(request.physicalLine) > 0 && typeof request.pointer === 'string' && request.pointer.length <= 2048 && (request.pointer === '' || request.pointer.startsWith('/')) && (request.format === 'plain' || request.format === 'json');
   if (request.type === 'json/getChildren') return typeof request.nodeId === 'string' && request.nodeId.length <= MAX_ID && Number.isSafeInteger(request.offset) && Number(request.offset) >= 0 && Number.isInteger(request.limit) && Number(request.limit) > 0 && Number(request.limit) <= 500;
   if (request.type === 'session/openText') return (request.kind === 'json' || request.kind === 'jsonl') && typeof request.revision === 'string' && request.revision.length <= MAX_ID && validSettings(request.settings) && Array.isArray(request.chunks) && request.chunks.length <= 4096 && request.chunks.every((chunk) => typeof chunk === 'string' && chunk.length <= 256 * 1024) && request.chunks.reduce((total, chunk) => total + chunk.length, 0) <= request.settings.normalModeMaxBytes;
   if (request.type === 'jsonl/applyQuery') return typeof request.queryId === 'string' && request.queryId.length <= MAX_ID && Number.isSafeInteger(request.queryRevision) && Number(request.queryRevision) >= 0 && (request.filter === undefined || validFilter(request.filter)) && (request.sort === undefined || validSort(request.sort)) && (request.jmesPath === undefined || typeof request.jmesPath === 'string' && request.jmesPath.length <= 1024);

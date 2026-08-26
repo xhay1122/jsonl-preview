@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 describe('webview host message validation', () => {
   it('accepts versioned page messages', () => {
     expect(isHostMessage({ type: 'page', rows: [], total: 0, offset: 0, queryRevision: 4 })).toBe(true);
+    expect(isHostMessage({ type: 'copied' })).toBe(true);
   });
 
   it('rejects malformed messages before they reach React state', () => {

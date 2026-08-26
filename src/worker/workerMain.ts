@@ -54,7 +54,7 @@ parentPort.on('message', async (value: unknown) => {
         const progress = (scannedBytes: number, totalBytes: number, records: number) => parentPort!.postMessage({ type: 'progress', sessionId: request.sessionId, revision: request.revision, scannedBytes, totalBytes, records });
         if (request.type === 'session/openFile') await index.openFile(request.path, progress, { size: request.expectedSize, mtimeMs: request.expectedMtimeMs, dev: request.expectedDev, ino: request.expectedIno }); else await index.openText(request.chunks.join(''), progress);
         sessions.set(request.sessionId, { revision: request.revision, kind: 'jsonl', jsonl: index, cancelled: new Set(), activeQueries: new Set() });
-        respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: request.revision, data: { kind: 'jsonl', revision: request.revision, byteLength: index.sourceByteLength, parseMilliseconds: performance.now() - started, errors: index.errorCount, recordCount: index.total(), fields: index.fields } });
+        respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: request.revision, data: { kind: 'jsonl', revision: request.revision, byteLength: index.sourceByteLength, parseMilliseconds: performance.now() - started, errors: index.errorCount, errorsComplete: index.errorsComplete, recordCount: index.total(), fields: index.fields, fieldPointers: index.fieldPointers } });
       }
       return;
     }
@@ -80,20 +80,23 @@ parentPort.on('message', async (value: unknown) => {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       const rows = await session.jsonl.page(request.queryId, request.offset, request.limit);
       const total = session.jsonl.total(request.queryId);
-      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { rows, total, scannedRows: session.jsonl.lineCount, matchedRows: total, isComplete: true } });
+      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { rows, total, scannedRows: session.jsonl.lineCount, matchedRows: total, isComplete: true, errors: session.jsonl.errorCount, errorsComplete: session.jsonl.errorsComplete } });
     } else if (request.type === 'jsonl/getRecord') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: await session.jsonl.recordText(request.physicalLine) } });
     } else if (request.type === 'jsonl/getCell') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: await session.jsonl.cellText(request.physicalLine, request.field) } });
+    } else if (request.type === 'jsonl/getCellValue') {
+      if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
+      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: await session.jsonl.cellValueText(request.physicalLine, request.pointer, request.format) } });
     } else if (request.type === 'jsonl/applyQuery') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       session.cancelled.delete(request.requestId); session.activeQueries.add(request.requestId);
       let result;
       try { result = await session.jsonl.applyQuery(request.queryId, request.filter, request.sort, () => session.cancelled.has(request.requestId), request.jmesPath); }
       finally { session.activeQueries.delete(request.requestId); session.cancelled.delete(request.requestId); }
-      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { rows: await session.jsonl.page(request.queryId, 0, session.jsonl.settings.pageSize), total: session.jsonl.total(request.queryId), ...result, isComplete: true } });
+      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { rows: await session.jsonl.page(request.queryId, 0, session.jsonl.settings.pageSize), total: session.jsonl.total(request.queryId), ...result, isComplete: true, errors: session.jsonl.errorCount, errorsComplete: session.jsonl.errorsComplete } });
     } else if (request.type === 'jsonl/export') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { content: await session.jsonl.export(request.queryId, request.format, request.maxBytes) } });

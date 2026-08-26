@@ -51,10 +51,13 @@ function dateFormatter(locale?: string, timezone?: string): Intl.DateTimeFormat 
   }
   return formatter;
 }
-function sortSpec(sort?: SortState | null): { path: string; direction: 'asc' | 'desc' } | { by: 'physicalLine'; direction: 'asc' | 'desc' } | undefined {
+function sortSpec(sort?: SortState | null, fieldPointers?: Record<string, string>): { path: string; direction: 'asc' | 'desc' } | { by: 'physicalLine'; direction: 'asc' | 'desc' } | undefined {
   if (!sort) return undefined;
   if (sort.field === PHYSICAL_LINE_SORT) return sort.direction === 'asc' ? undefined : { by: 'physicalLine', direction: 'desc' };
-  return { path: '/' + sort.field.split('.').map((part) => part.replace(/~/g, '~0').replace(/\//g, '~1')).join('/'), direction: sort.direction };
+  const path = fieldPointers
+    ? fieldPointers[sort.field]
+    : '/' + sort.field.split('.').map((part) => part.replace(/~/g, '~0').replace(/\//g, '~1')).join('/');
+  return path === undefined ? undefined : { path, direction: sort.direction };
 }
 function temporaryText(value: unknown): string {
   if (typeof value === 'string') { try { return jsonText(JSON.parse(value)); } catch { return jsonText(value); } }
@@ -95,7 +98,10 @@ function displayValue(value: unknown, summary: WebviewSummary): { text: string; 
 interface MenuItem { label: string; alternateLabel?: string; action(alternate: boolean): void; icon?: ReactNode; alternateIcon?: ReactNode }
 interface MenuState { x: number; y: number; items: MenuItem[] }
 interface DrawerState { title: string; value?: unknown; text?: string; physicalLine?: number; loading?: boolean }
+interface FullTextState { text: string; physicalLine?: number; pointer?: string }
 const AltKeyContext = createContext(false);
+
+function pointerSegment(value: string): string { return value.replace(/~/g, '~0').replace(/\//g, '~1'); }
 
 function JsonScalarValue({ text, kind, actions, onExpand, onCopy, onOpen }: {
   text: string; kind: string; actions: boolean; onExpand(): void; onCopy(): void; onOpen(current: boolean): void;
@@ -213,16 +219,17 @@ function ContextMenu({ menu, close }: { menu: MenuState; close(): void }): React
   </div>;
 }
 
-function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, maxDepth = 10, jsonPath, onMenu, onLongText, onCopyText, onOpenText }: {
-  value: unknown; label?: string; level?: number; initiallyExpanded?: boolean; maxDepth?: number; jsonPath?: string;
+function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, maxDepth = 10, jsonPath, pointer, onMenu, onLongText, onCopyText, onOpenText }: {
+  value: unknown; label?: string; level?: number; initiallyExpanded?: boolean; maxDepth?: number; jsonPath?: string; pointer?: string;
   onMenu?(event: React.MouseEvent, key: string | undefined, value: unknown, path?: string): void;
-  onLongText?(text: string): void; onCopyText?(text: string): void; onOpenText?(text: string, current: boolean): void;
+  onLongText?(text: string, pointer?: string): void; onCopyText?(text: string, pointer?: string): void; onOpenText?(text: string, current: boolean, pointer?: string): void;
 }): ReactNode {
   const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item] as const) : isContainer(value) ? Object.entries(value) : [];
   const expandable = entries.length > 0;
   const [open, setOpen] = useState(expandable && initiallyExpanded && level <= maxDepth);
   const shown = typeof value === 'string' ? value : value === null ? 'null' : isContainer(value) ? '' : String(value);
   const childPath = (key: string) => jsonPath === undefined ? undefined : Array.isArray(value) ? `${jsonPath}[${key}]` : `${jsonPath}${/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? `.${key}` : `.${JSON.stringify(key)}`}`;
+  const childPointer = (key: string) => pointer === undefined ? undefined : `${pointer}/${pointerSegment(key)}`;
   const toggle = () => { if (expandable) setOpen((current) => !current); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!expandable) return;
@@ -237,9 +244,9 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{label}</span>
       {expandable ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span>
-        : <JsonScalarValue text={shown} kind={valueKind(value)} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string)} onCopy={() => onCopyText?.(value as string)} onOpen={(current) => onOpenText?.(value as string, current)} />}
+        : <JsonScalarValue text={shown} kind={valueKind(value)} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string, pointer)} onCopy={() => onCopyText?.(value as string, pointer)} onOpen={(current) => onOpenText?.(value as string, current, pointer)} />}
     </div>
-    {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}</div>}
+    {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} pointer={childPointer(key)} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}</div>}
   </>;
 }
 
@@ -326,7 +333,8 @@ function Toolbar({ summary, query, onQuery, onFormat, onRepair, onExport, onOpen
 }
 
 function StatusBar({ summary, extra, progress }: { summary: WebviewSummary; extra?: string; progress?: number }): ReactNode {
-  const items = [formatBytes(summary.byteLength), summary.kind === 'jsonl' ? tr('records', { count: summary.recordCount ?? 0 }) : undefined, tr('errors', { count: summary.errors }), `${Math.round(summary.parseMilliseconds)} ms`, progress === undefined ? undefined : tr('indexed', { count: progress }), extra].filter(Boolean);
+  const errors = tr(summary.errorsComplete === false ? 'errorsFound' : 'errors', { count: summary.errors });
+  const items = [formatBytes(summary.byteLength), summary.kind === 'jsonl' ? tr('records', { count: summary.recordCount ?? 0 }) : undefined, errors, `${Math.round(summary.parseMilliseconds)} ms`, progress === undefined ? undefined : tr('indexed', { count: progress }), extra].filter(Boolean);
   return <div className="statusbar">{items.map((item) => <span key={String(item)}>{item}</span>)}</div>;
 }
 
@@ -478,7 +486,7 @@ export function App(): ReactNode {
   const lastCriteria = useRef<string | undefined>(undefined);
   const [menu, setMenu] = useState<MenuState>();
   const [drawer, setDrawer] = useState<DrawerState>();
-  const [fullText, setFullText] = useState<string>();
+  const [fullText, setFullText] = useState<FullTextState>();
   const [toast, setToast] = useState<string>();
   const [altPressed, setAltPressed] = useState(false);
   const initialized = useRef(false);
@@ -487,7 +495,7 @@ export function App(): ReactNode {
     setToast(message);
     window.setTimeout(() => setToast((current) => current === message ? undefined : current), 1600);
   }, []);
-  const copied = useCallback((text: string) => { send({ type: 'copy', text }); announce(tr('copied')); }, [announce]);
+  const copied = useCallback((text: string) => { send({ type: 'copy', text }); }, []);
   const openTextTab = useCallback((text: string, current: boolean) => {
     if (current) send({ type: 'openCurrent', text: temporaryText(text) });
     else send({ type: 'openTemp', text: temporaryText(text) });
@@ -515,8 +523,9 @@ export function App(): ReactNode {
         childRequests.current.delete(`${message.generation}:${message.parentId}:${message.offset}`);
         dispatch({ type: 'treeChildren', generation: message.generation, parentId: message.parentId, offset: message.offset, nodes: message.nodes });
       }
-      else if (message.type === 'page') dispatch({ type: 'page', queryRevision: message.queryRevision, offset: message.offset, page: { rows: message.rows, total: message.total, scannedRows: message.scannedRows, matchedRows: message.matchedRows, isComplete: message.isComplete } });
+      else if (message.type === 'page') dispatch({ type: 'page', queryRevision: message.queryRevision, offset: message.offset, page: { rows: message.rows, total: message.total, scannedRows: message.scannedRows, matchedRows: message.matchedRows, isComplete: message.isComplete, ...(message.errors === undefined ? {} : { errors: message.errors }), ...(message.errorsComplete === undefined ? {} : { errorsComplete: message.errorsComplete }) } });
       else if (message.type === 'record') setDrawer((current) => current?.physicalLine === message.physicalLine ? recordDrawer(message.physicalLine, message.content) : current);
+      else if (message.type === 'copied') announce(tr('copied'));
       else if (message.type === 'search') dispatch({ type: 'search', searchRevision: message.searchRevision, query: message.query, result: message.result });
       else if (message.type === 'progress') dispatch({ type: 'progress', records: message.records });
       else if (message.type === 'error') {
@@ -526,7 +535,7 @@ export function App(): ReactNode {
     };
     window.addEventListener('message', onMessage); send({ type: 'ready' });
     return () => window.removeEventListener('message', onMessage);
-  }, [recordDrawer]);
+  }, [announce, recordDrawer]);
 
   useEffect(() => {
     vscode.setState(state.view);
@@ -553,7 +562,7 @@ export function App(): ReactNode {
       } else {
         const revision = ++queryRevision.current;
         dispatch({ type: 'startQuery', queryRevision: revision });
-        const sort = sortSpec(state.view.sort);
+        const sort = sortSpec(state.view.sort, summary.fieldPointers);
         const criteria = JSON.stringify({ query, sort });
         const hasPreviousRequest = lastCriteria.current !== undefined;
         lastCriteria.current = criteria;
@@ -562,7 +571,7 @@ export function App(): ReactNode {
       }
     }, summary.kind === 'jsonl' ? 120 : 180);
     return () => window.clearTimeout(timer);
-  }, [state.summary, state.view.query, state.view.sort]);
+  }, [state.tree.generation, state.view.query, state.view.sort]);
 
   const requestChildren = useCallback((node: JsonNodeView, offset: number) => {
     const current = stateRef.current;
@@ -577,12 +586,12 @@ export function App(): ReactNode {
     const items: MenuItem[] = [
       ...(node.key !== undefined ? [{ label: tr('copyKey'), icon: <KeyIcon />, action: () => copied(String(node.key)) }] : []),
       ...(node.childrenCount === 0 ? [{ label: tr('copyValue'), icon: <CopyIcon />, action: () => copied(node.displayValue ?? '') }] : []),
-      { label: tr('copyJson'), icon: <CopyIcon />, action: () => { send({ type: 'copy', nodeId: node.nodeId, format: 'pretty' }); announce(tr('copied')); } },
+      { label: tr('copyJson'), icon: <CopyIcon />, action: () => send({ type: 'copy', nodeId: node.nodeId, format: 'pretty' }) },
       { label: tr('copyPath'), icon: <CodeIcon />, action: () => copied(node.jsonPath) },
       { label: tr('openTemp'), alternateLabel: tr('openCurrent'), icon: <TabIcon />, alternateIcon: <EnterIcon />, action: (current) => node.type === 'string' && node.displayValue !== undefined ? send({ type: current ? 'openCurrent' : 'openTemp', text: temporaryText(node.displayValue) }) : send({ type: current ? 'openCurrent' : 'openTemp', nodeId: node.nodeId }) }
     ];
     setMenu({ x: event.clientX, y: event.clientY, items });
-  }, [announce, copied]);
+  }, [copied]);
 
   const onValueMenu = useCallback((event: React.MouseEvent, key: string | undefined, value: unknown, path?: string) => {
     const items: MenuItem[] = [
@@ -596,8 +605,12 @@ export function App(): ReactNode {
   const onCellMenu = useCallback((event: React.MouseEvent, row: JsonlRow, cellValue: unknown, cellText: string, field?: string) => {
     event.preventDefault();
     setMenu({ x: event.clientX, y: event.clientY, items: [
-      { label: tr('copyLine'), icon: <CopyIcon />, action: () => copied(row.raw) },
-      { label: tr('copyCell'), icon: <CopyIcon />, action: () => copied(cellText) },
+      { label: tr('copyLine'), icon: <CopyIcon />, action: () => { if (row.rawTruncated) send({ type: 'copy', physicalLine: row.physicalLine }); else copied(row.raw); } },
+      { label: tr('copyCell'), icon: <CopyIcon />, action: () => {
+        const pointer = field ? stateRef.current.summary?.fieldPointers?.[field] : undefined;
+        if (field && row.truncatedCells?.includes(field) && pointer !== undefined) send({ type: 'copy', physicalLine: row.physicalLine, pointer });
+        else copied(cellText);
+      } },
       { label: tr('openRowTemp'), alternateLabel: tr('openRowCurrent'), icon: <TabIcon />, alternateIcon: <EnterIcon />, action: (current) => send({ type: current ? 'openCurrent' : 'openTemp', physicalLine: row.physicalLine }) },
       ...(cellValue !== undefined ? [{ label: tr('openCellTemp'), alternateLabel: tr('openCellCurrent'), icon: <TabIcon />, alternateIcon: <EnterIcon />, action: (current: boolean) => field
         ? send({ type: current ? 'openCurrent' : 'openTemp', physicalLine: row.physicalLine, field })
@@ -613,7 +626,7 @@ export function App(): ReactNode {
       { label: tr('openSelectedTemp'), alternateLabel: tr('openCurrent'), icon: <TabIcon />, alternateIcon: <EnterIcon />, action: (current) => send({ type: current ? 'openCurrent' : 'openTemp', text }) }
     ] });
   }, [copied]);
-  const openLongText = useCallback((text: string) => setFullText(text), []);
+  const openLongText = useCallback((text: string) => setFullText({ text }), []);
 
   useEffect(() => {
     const suppressNativeMenu = (event: MouseEvent) => {
@@ -659,14 +672,17 @@ export function App(): ReactNode {
       ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} copyText={copied} openTextTab={openTextTab} />
       : <MemoizedJsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} onColumnWidthsChange={onColumnWidthsChange} />}
     {menu && <ContextMenu menu={menu} close={() => setMenu(undefined)} />}
-    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={!drawer.loading && drawer.text !== undefined && <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(drawer.text!)}>{tr('copyLine')}</Button><Button size="small" variant="outline" title={altPressed ? tr('openCurrent') : tr('openTempHint')} icon={altPressed ? <EnterIcon /> : <TabIcon />} onClick={(event) => send(event.altKey || altPressed ? { type: 'openCurrent', text: drawer.text! } : { type: 'openTemp', text: drawer.text! })}>{altPressed ? tr('currentTab') : tr('tempTab')}</Button></>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setDrawer(undefined)}>
+    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={!drawer.loading && drawer.text !== undefined && <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => drawer.physicalLine ? send({ type: 'copy', physicalLine: drawer.physicalLine }) : copied(drawer.text!)}>{tr('copyLine')}</Button><Button size="small" variant="outline" title={altPressed ? tr('openCurrent') : tr('openTempHint')} icon={altPressed ? <EnterIcon /> : <TabIcon />} onClick={(event) => drawer.physicalLine ? send({ type: event.altKey || altPressed ? 'openCurrent' : 'openTemp', physicalLine: drawer.physicalLine }) : send(event.altKey || altPressed ? { type: 'openCurrent', text: drawer.text! } : { type: 'openTemp', text: drawer.text! })}>{altPressed ? tr('currentTab') : tr('tempTab')}</Button></>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setDrawer(undefined)}>
       {drawer && <div className="drawer-content">
         {drawer.loading ? <div className="drawer-loading"><span className="loading-spinner" aria-hidden /><span>{tr('loading')}</span></div>
-          : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openLongText} onCopyText={copied} onOpenText={openTextTab} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
+          : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" pointer="" onMenu={onValueMenu}
+            onLongText={(text, pointer) => setFullText({ text, ...(drawer.physicalLine && pointer !== undefined ? { physicalLine: drawer.physicalLine, pointer } : {}) })}
+            onCopyText={(text, pointer) => drawer.physicalLine && pointer !== undefined ? send({ type: 'copy', physicalLine: drawer.physicalLine, pointer }) : copied(text)}
+            onOpenText={(text, current, pointer) => drawer.physicalLine && pointer !== undefined ? send({ type: current ? 'openCurrent' : 'openTemp', physicalLine: drawer.physicalLine, pointer }) : openTextTab(text, current)} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
       </div>}
     </Drawer>
-    <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setFullText(undefined)}>
-      {fullText !== undefined && <FullContentView text={fullText} onContextMenu={onFullTextMenu} />}
+    <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => fullText.physicalLine && fullText.pointer !== undefined ? send({ type: 'copy', physicalLine: fullText.physicalLine, pointer: fullText.pointer }) : copied(fullText.text)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setFullText(undefined)}>
+      {fullText !== undefined && <FullContentView text={fullText.text} onContextMenu={onFullTextMenu} />}
     </Drawer>
     {state.error && <div className="toast error-toast" role="alert" onClick={() => dispatch({ type: 'clearError' })}>{state.error}</div>}
     {toast && <div className="toast" role="status">{toast}</div>}

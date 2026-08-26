@@ -9,8 +9,6 @@ import { webviewHtml } from './webviewHtml.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 interface WebviewMessage { type: string; [key: string]: unknown }
-interface RepairPreview { original: string; repaired: string }
-
 export class RepairPreviewProvider implements vscode.TextDocumentContentProvider, vscode.Disposable {
   private readonly content = new Map<string, string>();
   private readonly emitter = new vscode.EventEmitter<vscode.Uri>();
@@ -38,6 +36,7 @@ export class PreviewController implements vscode.Disposable {
   private activeQueryId?: string;
   private currentQueryRevision = 0;
   private currentQueryId = 'default';
+  private currentQueryIdRevision = 0;
   private readonly controllerId = randomUUID();
   private refreshGeneration = 0;
   private readonly disposables: vscode.Disposable[] = [];
@@ -49,7 +48,7 @@ export class PreviewController implements vscode.Disposable {
     private settings: PreviewSettings,
     private readonly coordinator: DocumentCoordinator,
     private readonly client: WorkerClient,
-    private readonly extensionUri: vscode.Uri,
+    extensionUri: vscode.Uri,
     private readonly repairPreview: RepairPreviewProvider,
     private readonly workspaceState: vscode.Memento,
     private readonly textDocument?: vscode.TextDocument
@@ -75,7 +74,7 @@ export class PreviewController implements vscode.Disposable {
       if (this.disposed || generation !== this.refreshGeneration) { await this.coordinator.release(next); return; }
       const previous = this.session;
       this.source = source; this.kind = kind; this.settings = settings; this.session = next;
-      this.currentQueryId = 'default'; this.currentQueryRevision = 0; delete this.activeQueryId;
+      this.currentQueryId = 'default'; this.currentQueryRevision = 0; this.currentQueryIdRevision = 0; delete this.activeQueryId;
       if (previous) await this.coordinator.release(previous);
       if (this.webviewReady) await this.postInit();
     } catch (error) { if (!this.disposed && generation === this.refreshGeneration) await this.error(error); }
@@ -101,9 +100,15 @@ export class PreviewController implements vscode.Disposable {
         const offset = Number.isInteger(message.offset) ? Math.max(0, Number(message.offset)) : 0;
         const queryRevision = Number.isInteger(message.queryRevision) ? Number(message.queryRevision) : 0;
         if (queryRevision < this.currentQueryRevision) return;
+        // Keep the initial default page retryable until one request commits it.
+        // currentQueryRevision may already have advanced when a previous page
+        // request failed before producing a response.
+        const initialDefaultPage = this.currentQueryIdRevision === 0 && this.currentQueryId === 'default';
+        if (!initialDefaultPage && queryRevision !== this.currentQueryIdRevision) throw new Error('The current query has not completed successfully; fix or clear it before changing pages.');
         this.currentQueryRevision = queryRevision;
         const data = await this.client.request({ type: 'jsonl/getPage', sessionId: session.id, revision: session.revision, queryId: this.currentQueryId, queryRevision, offset, limit: this.settings.pageSize });
-        if (this.session !== session || this.disposed) return;
+        if (this.session !== session || this.disposed || queryRevision !== this.currentQueryRevision) return;
+        if (initialDefaultPage) this.currentQueryIdRevision = queryRevision;
         await this.panel.webview.postMessage({ type: 'page', ...data, offset, queryRevision });
       } else if (message.type === 'record') {
         const physicalLine = Number.isSafeInteger(message.physicalLine) ? Number(message.physicalLine) : 0;
@@ -119,7 +124,12 @@ export class PreviewController implements vscode.Disposable {
         if (this.activeQueryId) void this.client.cancel(session.id, this.activeQueryId).catch(() => undefined);
         const queryId = `${this.controllerId}:${queryRevision}`;
         const pending = this.client.requestWithId({ type: 'jsonl/applyQuery', sessionId: session.id, revision: session.revision, queryId, queryRevision, ...(filter ? { filter } : {}), ...(sort ? { sort } : {}), ...(jmesPath ? { jmesPath } : {}) }, 120_000); this.activeQueryId = pending.requestId;
-        const data = await pending.promise; if (this.session === session && this.activeQueryId === pending.requestId && !this.disposed) { delete this.activeQueryId; this.currentQueryId = queryId; await this.panel.webview.postMessage({ type: 'page', ...data, offset: 0, queryRevision }); }
+        try {
+          const data = await pending.promise;
+          if (this.session === session && this.activeQueryId === pending.requestId && !this.disposed) { this.currentQueryId = queryId; this.currentQueryIdRevision = queryRevision; await this.panel.webview.postMessage({ type: 'page', ...data, offset: 0, queryRevision }); }
+        } finally {
+          if (this.activeQueryId === pending.requestId) delete this.activeQueryId;
+        }
       } else if (message.type === 'jsonSearch') {
         const query = typeof message.query === 'string' ? message.query.slice(0, 1024) : '';
         const searchRevision = Number.isInteger(message.searchRevision) ? Number(message.searchRevision) : 0;
@@ -157,12 +167,23 @@ export class PreviewController implements vscode.Disposable {
     const editor = await vscode.window.showTextDocument(document, { preview: true }); const position = new vscode.Position(target, 0); editor.selection = new vscode.Selection(position, position); editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
   }
   private async copy(message: WebviewMessage, session: SessionHandle): Promise<void> {
-    if (typeof message.text === 'string') { await vscode.env.clipboard.writeText(message.text); return; }
+    if (typeof message.text === 'string') { await vscode.env.clipboard.writeText(message.text); await this.panel.webview.postMessage({ type: 'copied' }); return; }
+    if (Number.isSafeInteger(message.physicalLine) && Number(message.physicalLine) > 0) {
+      const pointer = typeof message.pointer === 'string' ? message.pointer : undefined;
+      const data = await this.client.request(pointer !== undefined
+        ? { type: 'jsonl/getCellValue', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine), pointer, format: 'plain' }
+        : { type: 'jsonl/getRecord', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine) }) as { content: string };
+      if (this.session !== session || this.disposed) return;
+      await vscode.env.clipboard.writeText(data.content);
+      await this.panel.webview.postMessage({ type: 'copied' });
+      return;
+    }
     const nodeId = typeof message.nodeId === 'string' ? message.nodeId : '';
     const format = ['raw', 'compact', 'pretty'].includes(String(message.format)) ? message.format as 'raw' | 'compact' | 'pretty' : 'raw';
     const data = await this.client.request({ type: 'json/getNodeText', sessionId: session.id, revision: session.revision, nodeId, format }) as { content: string };
     if (this.session !== session || this.disposed) return;
     await vscode.env.clipboard.writeText(data.content);
+    await this.panel.webview.postMessage({ type: 'copied' });
   }
   private async openTemporary(message: WebviewMessage, session: SessionHandle): Promise<void> {
     const content = await this.generatedContent(message, session);
@@ -182,8 +203,11 @@ export class PreviewController implements vscode.Disposable {
     let content = typeof message.text === 'string' ? message.text : '';
     if (!content && Number.isSafeInteger(message.physicalLine) && Number(message.physicalLine) > 0) {
       const field = typeof message.field === 'string' ? message.field : '';
-      const data = await this.client.request(field
-        ? { type: 'jsonl/getCell', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine), field }
+      const pointer = typeof message.pointer === 'string' ? message.pointer : undefined;
+      const data = await this.client.request(pointer !== undefined
+        ? { type: 'jsonl/getCellValue', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine), pointer, format: 'json' }
+        : field
+          ? { type: 'jsonl/getCell', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine), field }
         : { type: 'jsonl/getRecord', sessionId: session.id, revision: session.revision, physicalLine: Number(message.physicalLine) }) as { content: string };
       if (this.session !== session || this.disposed) return '';
       content = data.content;
@@ -225,7 +249,7 @@ export class PreviewController implements vscode.Disposable {
   private async export(queryRevision: number, session = this.session): Promise<void> {
     if (!session) throw new Error('The preview is not ready.');
     if (this.activeQueryId) throw new Error('Wait for the current query to finish before exporting.');
-    if (queryRevision !== this.currentQueryRevision) throw new Error('The query changed; retry the export.');
+    if (queryRevision !== this.currentQueryRevision || queryRevision !== this.currentQueryIdRevision) throw new Error('The current query has not completed successfully; fix or clear it before exporting.');
     const target = await vscode.window.showSaveDialog({ filters: { 'JSON Lines': ['jsonl'], JSON: ['json'] }, defaultUri: vscode.Uri.joinPath(this.resource, '..', `${this.resource.path.split('/').at(-1)}.filtered.jsonl`) }); if (!target) return;
     let overwriteApproved = false;
     try { await vscode.workspace.fs.stat(target); const overwrite = await vscode.window.showWarningMessage(`Replace ${target.path.split('/').at(-1)}?`, { modal: true }, 'Replace'); if (!overwrite) return; overwriteApproved = true; } catch { /* target does not exist */ }
