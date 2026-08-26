@@ -77,3 +77,62 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 | `jsonlPreview.timezone` | `system` | `system` 或 IANA 时区 | 使用指定时区显示识别到的时间戳，例如 `Asia/Shanghai`；无效时区会保留原值。 |
 
 建议让 `largeFileThresholdMB` 小于或等于 `normalModeMaxFileMB`。否则，大小介于两者之间的 JSONL/NDJSON 文件既不会进入流式模式，又会超过普通模式上限。大文件模式要求本地文件没有未保存修改，并且只读；显式打开源码会让 VS Code 完整加载文件。
+
+## Changelog
+
+### Unreleased
+
+- Hold `Alt` while opening content to switch between a temporary preview tab and the current tab.
+
+### 0.1.10 — 2026-08-26
+
+- Added search to the full-content viewer.
+- Added copy and open actions for string scalar values, with clearer temporary-tab hints and improved value layout.
+- Simplified scalar-value expansion behavior and expanded the related test coverage.
+
+### 0.1.9 — 2026-08-24
+
+- Added an option to open JSON and JSONL content in the current tab.
+
+### 0.1.8 — 2026-08-02
+
+- Prevented the paginator from being clipped and duplicate drawer styles from being injected when reopening a preview.
+- Improved grid performance by caching date formatters and memoizing the grid.
+
+### 0.1.7 — 2026-08-01
+
+- Added a context menu for selected text in the full-content viewer.
+
+### 0.1.6 — 2026-07-26
+
+- Added a VS Code theme-aware overlay background for loading states.
+
+### 0.1.5 — 2026-07-26
+
+- Added resizable JSONL columns and persisted column widths.
+- Improved fixed table-header theme integration.
+- Updated search and filter placeholders with JMESPath examples.
+
+### 0.1.4 — 2026-07-24
+
+- Included documentation images in the packaged extension.
+- Limited source-map generation to watch builds and configured the VSCE GitHub branch.
+
+### 0.1.3 — 2026-07-24
+
+- Added localized descriptions for extension settings.
+- Expanded the settings documentation and clarified large-file mode limits.
+
+### 0.1.2 — 2026-07-20
+
+- Added temporary-tab previews for JSONL rows and cells.
+- Improved context-menu actions, icons, keyboard navigation, and drawer actions.
+- Fixed source-file opening behavior.
+
+### 0.1.1 — 2026-07-20
+
+- Introduced the initial preview UI, selection-preview menu integration, and final extension package identity.
+
+### 0.1.0 — 2026-07-19
+
+- Initial release with JSON, JSONL, and NDJSON previews.

@@ -34,9 +34,23 @@ describe('webview drawer styles', () => {
     expect(declarations('.drawer-header-actions')).toMatch(/flex:\s*0 1 auto/);
   });
 
-  it('keeps full-content search visible while its text scrolls', () => {
-    expect(declarations('.drawer-search')).toMatch(/position:\s*sticky/);
-    expect(declarations('.drawer-search')).toMatch(/top:\s*0/);
+  it('floats full-content search in the upper-right while its text scrolls', () => {
+    expect(declarations('.drawer-search-overlay')).toMatch(/position:\s*sticky/);
+    expect(declarations('.drawer-search-overlay')).toMatch(/top:\s*8px/);
+    expect(declarations('.drawer-search-overlay')).toMatch(/justify-content:\s*flex-end/);
+    expect(declarations('.drawer-search-overlay')).toMatch(/height:\s*0/);
+    expect(declarations('.drawer-search-overlay')).toMatch(/padding:\s*0 var\(--td-comp-margin-s\) 0 12px/);
+    expect(declarations('.drawer-search')).toMatch(/width:\s*min\(400px/);
+    expect(declarations('.drawer-search')).toMatch(/min-height:\s*42px/);
+    expect(declarations('.drawer-search')).toMatch(/transform:\s*translateY\(12px\)/);
+    expect(declarations('.drawer-search')).toMatch(/background:\s*var\(--vscode-editorWidget-background\)/);
+    expect(declarations('.drawer-search')).toMatch(/padding:\s*6px 0 6px 8px/);
+    expect(declarations('.drawer-search')).not.toMatch(/border:/);
+    expect(declarations('.drawer-search')).toMatch(/border-radius:\s*3px/);
+    expect(declarations('.drawer-search')).toMatch(/box-shadow:\s*0 4px 14px/);
+    expect(declarations('.drawer-search-input')).toMatch(/display:\s*flex/);
+    expect(declarations('.drawer-search-input')).toMatch(/height:\s*30px/);
+    expect(declarations('.match-navigation')).toMatch(/width:\s*var\(--td-comp-size-xs\)/);
     expect(declarations('.full-content-viewer mark')).toMatch(/background:\s*#fff59d/);
     expect(declarations('.full-content-viewer mark')).toMatch(/border-radius:\s*3px/);
     expect(declarations('.full-content-viewer mark.active-match')).toMatch(/background:\s*#f9a825/);

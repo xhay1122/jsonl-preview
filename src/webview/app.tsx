@@ -6,6 +6,7 @@ import Table, { type PrimaryTableCol, type TableSort } from 'tdesign-react/es/ta
 import ChevronRightIcon from 'tdesign-icons-react/esm/components/chevron-right';
 import ChevronDownIcon from 'tdesign-icons-react/esm/components/chevron-down';
 import ChevronUpIcon from 'tdesign-icons-react/esm/components/chevron-up';
+import CloseIcon from 'tdesign-icons-react/esm/components/close';
 import CodeIcon from 'tdesign-icons-react/esm/components/code';
 import CopyIcon from 'tdesign-icons-react/esm/components/copy';
 import EnterIcon from 'tdesign-icons-react/esm/components/enter';
@@ -115,6 +116,7 @@ function DrawerHeader({ title, actions }: { title: string; actions?: ReactNode }
 function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(event: React.MouseEvent<HTMLElement>): void }): ReactNode {
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
+  const [searchVisible, setSearchVisible] = useState(false);
   const container = useRef<HTMLDivElement>(null);
   const matches = useMemo(() => {
     if (!query) return [];
@@ -128,15 +130,32 @@ function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(
   useEffect(() => {
     container.current?.querySelector<HTMLElement>('[data-active-match="true"]')?.scrollIntoView?.({ block: 'center' });
   }, [activeMatch, matches]);
+  const closeSearch = () => { setSearchVisible(false); setQuery(''); };
   useEffect(() => {
-    const focusSearch = (event: globalThis.KeyboardEvent) => {
+    const handleSearchKeys = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && searchVisible) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSearch();
+        return;
+      }
       if (event.key.toLowerCase() !== 'f' || (!event.ctrlKey && !event.metaKey) || event.altKey) return;
       event.preventDefault();
-      container.current?.querySelector<HTMLInputElement>('.drawer-search-input input')?.focus();
+      if (searchVisible) {
+        const input = container.current?.querySelector<HTMLInputElement>('.drawer-search-input input');
+        input?.focus();
+        input?.select();
+      } else setSearchVisible(true);
     };
-    window.addEventListener('keydown', focusSearch);
-    return () => window.removeEventListener('keydown', focusSearch);
-  }, []);
+    window.addEventListener('keydown', handleSearchKeys, true);
+    return () => window.removeEventListener('keydown', handleSearchKeys, true);
+  }, [searchVisible]);
+  useEffect(() => {
+    if (!searchVisible) return;
+    const input = container.current?.querySelector<HTMLInputElement>('.drawer-search-input input');
+    input?.focus();
+    input?.select();
+  }, [searchVisible]);
 
   const move = (direction: 1 | -1) => {
     if (matches.length) setActiveMatch((current) => (current + direction + matches.length) % matches.length);
@@ -147,16 +166,19 @@ function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(
   ]).concat(text.slice(matches.at(-1)!.end)) : text;
 
   return <div ref={container} className="drawer-content full-content">
-    <div className="drawer-search">
-      <label className="drawer-search-input">
-        <span className="sr-only">{tr('searchContent')}</span>
-        <Input type="search" value={query} placeholder={tr('searchContent')} clearable prefixIcon={<SearchIcon />} autofocus
-          onChange={setQuery} onEnter={(_, context) => move(context.e.shiftKey ? -1 : 1)} />
-      </label>
-      <span className="match-count" aria-live="polite">{tr('matchCount', { current: matches.length ? activeMatch + 1 : 0, total: matches.length })}</span>
-      <button type="button" className="match-navigation" title={tr('previousMatch')} aria-label={tr('previousMatch')} disabled={!matches.length} onClick={() => move(-1)}><ChevronUpIcon /></button>
-      <button type="button" className="match-navigation" title={tr('nextMatch')} aria-label={tr('nextMatch')} disabled={!matches.length} onClick={() => move(1)}><ChevronDownIcon /></button>
-    </div>
+    {searchVisible && <div className="drawer-search-overlay">
+      <div className="drawer-search">
+        <label className="drawer-search-input">
+          <span className="sr-only">{tr('searchContent')}</span>
+          <Input type="search" value={query} placeholder={tr('searchContent')} clearable prefixIcon={<SearchIcon />}
+            onChange={setQuery} onEnter={(_, context) => move(context.e.shiftKey ? -1 : 1)} />
+        </label>
+        <span className="match-count" aria-live="polite">{tr('matchCount', { current: matches.length ? activeMatch + 1 : 0, total: matches.length })}</span>
+        <button type="button" className="match-navigation" title={tr('previousMatch')} aria-label={tr('previousMatch')} disabled={!matches.length} onClick={() => move(-1)}><ChevronUpIcon /></button>
+        <button type="button" className="match-navigation" title={tr('nextMatch')} aria-label={tr('nextMatch')} disabled={!matches.length} onClick={() => move(1)}><ChevronDownIcon /></button>
+        <button type="button" className="match-navigation search-close" title={tr('closeSearch')} aria-label={tr('closeSearch')} onClick={closeSearch}><CloseIcon /></button>
+      </div>
+    </div>}
     <pre className="text-viewer full-content-viewer" onContextMenu={onContextMenu}>{highlighted}</pre>
   </div>;
 }
