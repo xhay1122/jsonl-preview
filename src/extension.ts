@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const textProvider = new JsonPreviewProvider(context.extensionUri, coordinator, client, repairPreview, context.workspaceState, settings), largeProvider = new JsonlPreviewProvider(context.extensionUri, coordinator, client, repairPreview, context.workspaceState, settings);
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('jsonlPreview.text', textProvider, { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('jsonlPreview.large', largeProvider, { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
-  context.subscriptions.push(vscode.commands.registerCommand('jsonlPreview.openPreview', (uri?: vscode.Uri) => openPreview(uri)), vscode.commands.registerCommand('jsonlPreview.previewSelection', () => previewSelection()), vscode.commands.registerCommand('jsonlPreview.formatDocument', () => formatActive(client, coordinator)), vscode.commands.registerCommand('jsonlPreview.diagnoseRepair', () => openPreview()), vscode.commands.registerCommand('jsonlPreview.exportFiltered', async () => { const controller = textProvider.activeController() ?? largeProvider.activeController(); if (controller) await controller.exportCurrent(); else await openPreview(); }), vscode.commands.registerCommand('jsonlPreview.convertFormat', () => convertActive()), vscode.commands.registerCommand('jsonlPreview.resetViewState', async () => { await context.workspaceState.update('jsonlPreview.viewStates', undefined); await vscode.window.showInformationMessage('JSON(L) Preview view state was reset.'); }));
+  context.subscriptions.push(vscode.commands.registerCommand('jsonlPreview.openPreview', (uri?: vscode.Uri) => openPreview(uri)), vscode.commands.registerCommand('jsonlPreview.previewSelection', () => previewSelection()), vscode.commands.registerCommand('jsonlPreview.previewTerminalSelection', () => previewTerminalSelection()), vscode.commands.registerCommand('jsonlPreview.formatDocument', () => formatActive(client, coordinator)), vscode.commands.registerCommand('jsonlPreview.diagnoseRepair', () => openPreview()), vscode.commands.registerCommand('jsonlPreview.exportFiltered', async () => { const controller = textProvider.activeController() ?? largeProvider.activeController(); if (controller) await controller.exportCurrent(); else await openPreview(); }), vscode.commands.registerCommand('jsonlPreview.convertFormat', () => convertActive()), vscode.commands.registerCommand('jsonlPreview.resetViewState', async () => { await context.workspaceState.update('jsonlPreview.viewStates', undefined); await vscode.window.showInformationMessage('JSON(L) Preview view state was reset.'); }));
 }
 
 function activePreviewUri(): vscode.Uri | undefined {
@@ -66,7 +66,23 @@ async function openPreview(input?: vscode.Uri): Promise<void> {
 async function previewSelection(): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor || editor.selection.isEmpty) { await vscode.window.showInformationMessage('Select JSON or JSON Lines content first.'); return; }
-  const content = editor.document.getText(editor.selection);
+  await previewContent(editor.document.getText(editor.selection));
+}
+
+async function previewTerminalSelection(): Promise<void> {
+  const originalClipboard = await vscode.env.clipboard.readText();
+  let content: string | undefined;
+  try {
+    await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
+    content = await vscode.env.clipboard.readText();
+  } finally {
+    if (content !== undefined && await vscode.env.clipboard.readText() === content) await vscode.env.clipboard.writeText(originalClipboard);
+  }
+  if (!content) { await vscode.window.showInformationMessage('Select JSON or JSON Lines content in the terminal first.'); return; }
+  await previewContent(content);
+}
+
+async function previewContent(content: string): Promise<void> {
   const document = await vscode.workspace.openTextDocument({ content });
   await openPreview(document.uri);
 }

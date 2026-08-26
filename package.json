@@ -44,7 +44,8 @@
     "onCustomEditor:jsonlPreview.text",
     "onCustomEditor:jsonlPreview.large",
     "onCommand:jsonlPreview.openPreview",
-    "onCommand:jsonlPreview.previewSelection"
+    "onCommand:jsonlPreview.previewSelection",
+    "onCommand:jsonlPreview.previewTerminalSelection"
   ],
   "extensionKind": [
     "workspace"
@@ -100,6 +101,10 @@
         "title": "%command.previewSelection%"
       },
       {
+        "command": "jsonlPreview.previewTerminalSelection",
+        "title": "%command.previewSelection%"
+      },
+      {
         "command": "jsonlPreview.formatDocument",
         "title": "%command.format%"
       },
@@ -126,6 +131,13 @@
           "command": "jsonlPreview.previewSelection",
           "when": "editorHasSelection",
           "group": "navigation"
+        }
+      ],
+      "terminal/context": [
+        {
+          "command": "jsonlPreview.previewTerminalSelection",
+          "when": "terminalTextSelected || terminalTextSelectedInFocused",
+          "group": "3_edit@4"
         }
       ],
       "editor/title": [
