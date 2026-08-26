@@ -27,6 +27,7 @@ in `edge-cases.json`.
 | `exact-numbers.jsonl` | Integers beyond the safe range, equivalent numeric spellings, exponent notation, precise decimals, and `-0`. |
 | `empty-lines.jsonl` | Blank and whitespace-only physical lines between valid records; toggle `jsonlPreview.jsonl.ignoreEmptyLines`. |
 | `pagination.jsonl` | 1005 records, enough to exercise the default 1000-row page and **Load more** behavior. |
+| `comprehensive-complex.jsonl` | 1000 large, deeply nested records with long text, arrays, sparse values, exact identifiers, Unicode, escaped content, and varied enterprise-style data. |
 | `invalid-lines.jsonl` | Valid rows surrounding several independently malformed physical lines. |
 
 Suggested JSONL checks:
@@ -36,6 +37,7 @@ Suggested JSONL checks:
 - Open `record-shapes.jsonl` and verify that every physical line remains a separate row.
 - Open `empty-lines.jsonl` with empty-line ignoring both enabled and disabled.
 - Open `pagination.jsonl`, then load the final five rows.
+- Open `comprehensive-complex.jsonl` to exercise large-file rendering, nested row details, search, filtering, sorting, and export with realistic complex records.
 
 `repairable.json`, `trailing-comma.json`, `jsonc-options.json` under strict settings,
 and the malformed rows in `invalid-lines.jsonl` are deliberately invalid. Do not
