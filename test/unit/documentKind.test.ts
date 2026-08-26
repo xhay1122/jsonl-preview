@@ -16,6 +16,11 @@ describe('previewDocumentKind', () => {
     expect(previewDocumentKind('/Untitled-1', '{"id":1}\n{"id":2}\n')).toBe('jsonl');
   });
 
+  it('detects JSON and JSON Lines in text files from their content', () => {
+    expect(previewDocumentKind('/data/payload.txt', '{"id":1}')).toBe('json');
+    expect(previewDocumentKind('/data/events.txt', '{"id":1}\n{"id":2}\n')).toBe('jsonl');
+  });
+
   it('falls back to JSON so malformed content gets JSON diagnostics', () => {
     expect(previewDocumentKind('/Untitled-1', '{"incomplete":')).toBe('json');
   });

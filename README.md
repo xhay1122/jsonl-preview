@@ -14,7 +14,7 @@
 
 A safe, paged VS Code preview for JSON, JSONL and NDJSON. It provides a lazy JSON tree, line-isolated JSONL diagnostics, filtering, stable sorting, locale-aware date display, JMESPath projection, source navigation, formatting, high-confidence repair previews, export, and format conversion.
 
-Use **JSON(L) Preview: Open Preview** or **Open With...**. Clean local JSONL and NDJSON files above the configured threshold use the read-only streaming provider, so the extension host and webview never receive the complete file. JSON files, non-file URIs, and documents with unsaved changes use normal mode and are subject to its size limit.
+Use **JSON(L) Preview: Open Preview** or **Open With...**. The command can force-open files with other extensions, including `.txt`; their content is detected as JSON or JSON Lines. Clean local JSONL and NDJSON files above the configured threshold use the read-only streaming provider, so the extension host and webview never receive the complete file. JSON files, files with other extensions, non-file URIs, and documents with unsaved changes use normal mode and are subject to its size limit.
 
 Select JSON or JSON Lines content in any text editor, then right-click and choose **JSON(L) Preview: Preview Selection** to open it in a temporary preview document.
 
@@ -51,7 +51,7 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 
 一款安全、支持分页浏览的 VS Code JSON、JSONL 和 NDJSON 文件预览插件。它提供按需加载的 JSON 树、逐行隔离的 JSONL 错误诊断、筛选、稳定排序、适配界面语言的日期显示、JMESPath 投影、源码定位、格式化、高置信度修复预览、导出和格式转换等功能。
 
-使用 **JSON(L) Preview: Open Preview** 命令或 **打开方式...（Open With...）** 即可打开预览。没有未保存修改的本地 JSONL 和 NDJSON 文件超过配置阈值后会使用只读流式读取，因此扩展宿主和 Webview 都不会接收完整文件内容。JSON 文件、非本地文件 URI 和包含未保存修改的文档使用普通模式，并受普通模式大小上限约束。
+使用 **JSON(L) Preview: Open Preview** 命令或 **打开方式...（Open With...）** 即可打开预览。该命令可以强制打开 `.txt` 等其他扩展名的文件，并根据内容识别为 JSON 或 JSON Lines。没有未保存修改的本地 JSONL 和 NDJSON 文件超过配置阈值后会使用只读流式读取，因此扩展宿主和 Webview 都不会接收完整文件内容。JSON 文件、其他扩展名的文件、非本地文件 URI 和包含未保存修改的文档使用普通模式，并受普通模式大小上限约束。
 
 在任意文本编辑器中选中 JSON 或 JSON Lines 内容，右键选择 **JSON(L) 预览: 预览所选内容**，即可通过临时文档打开预览。
 
@@ -87,6 +87,8 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 ## Changelog
 
 ### Unreleased
+
+- Allowed the open-preview command to force-open JSON or JSON Lines content stored in files such as `.txt`.
 
 ### 0.1.11 — 2026-08-26
 

@@ -62,13 +62,7 @@
         "displayName": "%editor.text%",
         "selector": [
           {
-            "filenamePattern": "*.json"
-          },
-          {
-            "filenamePattern": "*.jsonl"
-          },
-          {
-            "filenamePattern": "*.ndjson"
+            "filenamePattern": "*"
           }
         ],
         "priority": "option"
@@ -143,7 +137,7 @@
       "editor/title": [
         {
           "command": "jsonlPreview.openPreview",
-          "when": "config.jsonlPreview.showEditorTitleIcon && (resourceScheme == untitled || resourceExtname == .json || resourceExtname == .jsonl || resourceExtname == .ndjson)",
+          "when": "config.jsonlPreview.showEditorTitleIcon && (resourceScheme == untitled || resourceExtname == .json || resourceExtname == .jsonl || resourceExtname == .ndjson || resourceExtname == .txt)",
           "group": "navigation"
         }
       ]

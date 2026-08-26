@@ -40,15 +40,15 @@ function activePreviewUri(): vscode.Uri | undefined {
 
 async function targetUri(input?: vscode.Uri): Promise<vscode.Uri | undefined> { return input ?? vscode.window.activeTextEditor?.document.uri ?? activePreviewUri(); }
 async function openPreview(input?: vscode.Uri): Promise<void> {
-  const uri = await targetUri(input); if (!uri) { await vscode.window.showInformationMessage('Open a JSON, JSONL or NDJSON file first.'); return; }
+  const uri = await targetUri(input); if (!uri) { await vscode.window.showInformationMessage('Open a file containing JSON or JSON Lines first.'); return; }
   const previewUri = activePreviewUri();
   if (previewUri?.toString() === uri.toString()) {
     await vscode.commands.executeCommand('reopenActiveEditorWith', 'default');
     return;
   }
   const viewColumn = vscode.window.activeTextEditor?.document.uri.toString() === uri.toString() ? vscode.window.activeTextEditor.viewColumn : undefined;
-  const extension = uri.path.toLowerCase().split('.').at(-1), isUntitled = uri.scheme === 'untitled';
-  if (!isUntitled && !['json', 'jsonl', 'ndjson'].includes(extension ?? '')) { await vscode.window.showErrorMessage('This file is not JSON, JSONL or NDJSON.'); return; }
+  const extension = uri.path.toLowerCase().split('.').at(-1);
+  const isKnownJsonl = extension === 'jsonl' || extension === 'ndjson';
   let viewType = 'jsonlPreview.text';
   if (uri.scheme === 'file') {
     const openDocument = vscode.workspace.textDocuments.find((document) => document.uri.toString() === uri.toString());
@@ -56,8 +56,8 @@ async function openPreview(input?: vscode.Uri): Promise<void> {
     const config = vscode.workspace.getConfiguration('jsonlPreview');
     const threshold = config.get('largeFileThresholdMB', 50) * 1024 * 1024;
     const normalLimit = config.get('normalModeMaxFileMB', 100) * 1024 * 1024;
-    if (extension !== 'json' && size > threshold && !openDocument?.isDirty) viewType = 'jsonlPreview.large';
-    else if (size > normalLimit) { await vscode.window.showErrorMessage(extension === 'json' ? 'The JSON file exceeds the normal-mode limit.' : 'The file exceeds the normal-mode limit and cannot use streaming while it has unsaved changes.'); return; }
+    if (isKnownJsonl && size > threshold && !openDocument?.isDirty) viewType = 'jsonlPreview.large';
+    else if (size > normalLimit) { await vscode.window.showErrorMessage(isKnownJsonl ? 'The file exceeds the normal-mode limit and cannot use streaming while it has unsaved changes.' : 'The file exceeds the normal-mode limit. Only files named .jsonl or .ndjson can use streaming mode.'); return; }
   }
   if (viewColumn !== undefined) await vscode.commands.executeCommand('reopenActiveEditorWith', viewType);
   else await vscode.commands.executeCommand('vscode.openWith', uri, viewType, { preview: false });

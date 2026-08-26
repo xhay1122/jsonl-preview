@@ -8,7 +8,7 @@
   "command.export": "JSONL 预览: 导出筛选记录",
   "command.convert": "JSON(L) 预览: 转换格式",
   "command.reset": "JSON(L) 预览: 重置视图状态",
-  "configuration.showEditorTitleIcon.description": "在 JSON、JSONL、NDJSON 和未命名文件的编辑器标题栏中显示 JSON(L) 预览图标。",
+  "configuration.showEditorTitleIcon.description": "在 JSON、JSONL、NDJSON、TXT 和未命名文件的编辑器标题栏中显示 JSON(L) 预览图标。",
   "configuration.json.indent.description": "JSON 格式化使用的空格数。",
   "configuration.json.allowComments.description": "解析 JSON 预览时允许 JavaScript 风格注释；不影响 JSONL 或 NDJSON。",
   "configuration.json.allowTrailingComma.description": "解析 JSON 预览时允许尾随逗号；不影响 JSONL 或 NDJSON。",
