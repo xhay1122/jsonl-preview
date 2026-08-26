@@ -154,6 +154,24 @@ describe('React webview app', () => {
     await userEvent.click(copyContent);
     expect(bridge.messages).toContainEqual({ type: 'copy', text: completeText });
 
+    const contentSearch = screen.getByRole('searchbox', { name: 'Search full content' });
+    expect(contentSearch.closest('.drawer-search')).toBeTruthy();
+    copyContent.focus();
+    expect(document.activeElement).toBe(copyContent);
+    const findShortcut = new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true });
+    window.dispatchEvent(findShortcut);
+    expect(findShortcut.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(contentSearch);
+    await userEvent.type(contentSearch, 'TEXT');
+    expect(screen.getByText('1/20')).toBeTruthy();
+    expect(document.querySelectorAll('.full-content-viewer mark')).toHaveLength(20);
+    expect(document.querySelector('.full-content-viewer mark.active-match')?.textContent).toBe('text');
+    await userEvent.click(screen.getByRole('button', { name: 'Next match' }));
+    expect(screen.getByText('2/20')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Previous match' }));
+    expect(screen.getByText('1/20')).toBeTruthy();
+    await userEvent.clear(contentSearch);
+
     const viewer = document.querySelector<HTMLElement>('.full-content-viewer')!;
     const selection = window.getSelection()!;
     const range = document.createRange();

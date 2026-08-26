@@ -1,9 +1,11 @@
-import { memo, useCallback, useEffect, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import Button from 'tdesign-react/es/button';
 import Drawer from 'tdesign-react/es/drawer';
 import Input from 'tdesign-react/es/input';
 import Table, { type PrimaryTableCol, type TableSort } from 'tdesign-react/es/table';
 import ChevronRightIcon from 'tdesign-icons-react/esm/components/chevron-right';
+import ChevronDownIcon from 'tdesign-icons-react/esm/components/chevron-down';
+import ChevronUpIcon from 'tdesign-icons-react/esm/components/chevron-up';
 import CodeIcon from 'tdesign-icons-react/esm/components/code';
 import CopyIcon from 'tdesign-icons-react/esm/components/copy';
 import FileExportIcon from 'tdesign-icons-react/esm/components/file-export';
@@ -105,6 +107,55 @@ function JsonScalarValue({ text, kind, actions, onExpand, onCopy, onOpen }: {
 
 function DrawerHeader({ title, actions }: { title: string; actions?: ReactNode }): ReactNode {
   return <div className="drawer-header-content"><span className="drawer-title">{title}</span>{actions && <div className="drawer-header-actions">{actions}</div>}</div>;
+}
+
+function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(event: React.MouseEvent<HTMLElement>): void }): ReactNode {
+  const [query, setQuery] = useState('');
+  const [activeMatch, setActiveMatch] = useState(0);
+  const container = useRef<HTMLDivElement>(null);
+  const matches = useMemo(() => {
+    if (!query) return [];
+    const offsets: Array<{ start: number; end: number }> = [];
+    const expression = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+    for (const match of text.matchAll(expression)) offsets.push({ start: match.index, end: match.index + match[0].length });
+    return offsets;
+  }, [query, text]);
+
+  useEffect(() => { setActiveMatch(0); }, [query]);
+  useEffect(() => {
+    container.current?.querySelector<HTMLElement>('[data-active-match="true"]')?.scrollIntoView?.({ block: 'center' });
+  }, [activeMatch, matches]);
+  useEffect(() => {
+    const focusSearch = (event: globalThis.KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'f' || (!event.ctrlKey && !event.metaKey) || event.altKey) return;
+      event.preventDefault();
+      container.current?.querySelector<HTMLInputElement>('.drawer-search-input input')?.focus();
+    };
+    window.addEventListener('keydown', focusSearch);
+    return () => window.removeEventListener('keydown', focusSearch);
+  }, []);
+
+  const move = (direction: 1 | -1) => {
+    if (matches.length) setActiveMatch((current) => (current + direction + matches.length) % matches.length);
+  };
+  const highlighted = matches.length ? matches.flatMap((match, index) => [
+    text.slice(index === 0 ? 0 : matches[index - 1]!.end, match.start),
+    <mark key={match.start} className={index === activeMatch ? 'active-match' : undefined} data-active-match={index === activeMatch}>{text.slice(match.start, match.end)}</mark>
+  ]).concat(text.slice(matches.at(-1)!.end)) : text;
+
+  return <div ref={container} className="drawer-content full-content">
+    <div className="drawer-search">
+      <label className="drawer-search-input">
+        <span className="sr-only">{tr('searchContent')}</span>
+        <Input type="search" value={query} placeholder={tr('searchContent')} clearable prefixIcon={<SearchIcon />} autofocus
+          onChange={setQuery} onEnter={(_, context) => move(context.e.shiftKey ? -1 : 1)} />
+      </label>
+      <span className="match-count" aria-live="polite">{tr('matchCount', { current: matches.length ? activeMatch + 1 : 0, total: matches.length })}</span>
+      <button type="button" className="match-navigation" title={tr('previousMatch')} aria-label={tr('previousMatch')} disabled={!matches.length} onClick={() => move(-1)}><ChevronUpIcon /></button>
+      <button type="button" className="match-navigation" title={tr('nextMatch')} aria-label={tr('nextMatch')} disabled={!matches.length} onClick={() => move(1)}><ChevronDownIcon /></button>
+    </div>
+    <pre className="text-viewer full-content-viewer" onContextMenu={onContextMenu}>{highlighted}</pre>
+  </div>;
 }
 
 function ContextMenu({ menu, close }: { menu: MenuState; close(): void }): ReactNode {
@@ -584,9 +635,7 @@ export function App(): ReactNode {
       </div>}
     </Drawer>
     <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => copied(fullText)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setFullText(undefined)}>
-      {fullText !== undefined && <div className="drawer-content">
-        <pre className="text-viewer full-content-viewer" onContextMenu={onFullTextMenu}>{fullText}</pre>
-      </div>}
+      {fullText !== undefined && <FullContentView text={fullText} onContextMenu={onFullTextMenu} />}
     </Drawer>
     {state.error && <div className="toast error-toast" role="alert" onClick={() => dispatch({ type: 'clearError' })}>{state.error}</div>}
     {toast && <div className="toast" role="status">{toast}</div>}

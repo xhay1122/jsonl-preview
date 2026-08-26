@@ -34,6 +34,15 @@ describe('webview drawer styles', () => {
     expect(declarations('.drawer-header-actions')).toMatch(/flex:\s*0 1 auto/);
   });
 
+  it('keeps full-content search visible while its text scrolls', () => {
+    expect(declarations('.drawer-search')).toMatch(/position:\s*sticky/);
+    expect(declarations('.drawer-search')).toMatch(/top:\s*0/);
+    expect(declarations('.full-content-viewer mark')).toMatch(/background:\s*#fff59d/);
+    expect(declarations('.full-content-viewer mark')).toMatch(/border-radius:\s*3px/);
+    expect(declarations('.full-content-viewer mark.active-match')).toMatch(/background:\s*#f9a825/);
+    expect(declarations('.full-content-viewer mark.active-match')).toMatch(/outline:\s*1px solid/);
+  });
+
   it('uses the shared responsive three-line clamp and reveals the value action on interaction', () => {
     expect(styles).not.toMatch(/\.drawer-tree \.json-value\s*\{/);
     expect(declarations('.json-value')).toMatch(/-webkit-line-clamp:\s*3/);

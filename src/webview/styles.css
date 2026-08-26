@@ -159,6 +159,18 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .drawer-loading { display: flex; min-height: 240px; align-items: center; justify-content: center; gap: 10px; color: var(--muted); }
 .text-viewer { margin: 0; padding: 18px; overflow-wrap: anywhere; font-family: var(--vscode-editor-font-family); line-height: 1.6; white-space: pre-wrap; }
 .drawer-tree { min-height: 100%; padding-bottom: 24px; }
+.full-content { min-height: 100%; }
+.drawer-search { position: sticky; z-index: 2; top: 0; display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: var(--vscode-editorWidget-background); border-bottom: 1px solid var(--border); }
+.drawer-search-input { min-width: 0; flex: 1 1 auto; }
+.drawer-search-input .t-input { color: var(--vscode-input-foreground); background: var(--vscode-input-background); border-color: var(--border); }
+.drawer-search-input .t-input:focus-within { border-color: var(--vscode-focusBorder); box-shadow: 0 0 0 1px var(--vscode-focusBorder); }
+.match-count { min-width: 4.5em; color: var(--muted); font-variant-numeric: tabular-nums; text-align: center; }
+.match-navigation { display: grid; width: 28px; height: 28px; flex: 0 0 auto; place-items: center; padding: 4px; color: var(--vscode-editor-foreground); background: transparent; border: 0; border-radius: 4px; }
+.match-navigation:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+.match-navigation:disabled { color: var(--muted); opacity: .45; }
+.match-navigation svg { width: 16px; height: 16px; }
+.full-content-viewer mark { color: #1f1f1f; background: #fff59d; border-radius: 3px; outline: 1px solid #e2cf62; }
+.full-content-viewer mark.active-match { background: #f9a825; outline: 1px solid #795000; }
 .toast { position: fixed; z-index: 4000; left: 50%; bottom: 24px; max-width: min(620px, 88vw); padding: 8px 14px; color: var(--vscode-notifications-foreground); background: var(--vscode-notifications-background); border: 1px solid var(--border); border-radius: 7px; box-shadow: 0 6px 24px #0006; transform: translateX(-50%); }
 .error-toast { color: var(--vscode-errorForeground); cursor: pointer; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
