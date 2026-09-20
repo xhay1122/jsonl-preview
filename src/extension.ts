@@ -9,6 +9,7 @@ import type { PreviewSettings } from './shared/settings.js';
 import { TextDocumentSource } from './document/documentSource.js';
 import { randomUUID } from 'node:crypto';
 import { readEditorSelection, readTerminalSelection, SELECTION_READ_BUSY } from './editors/editorSelection.js';
+import { selectionJsonCandidates } from './shared/selectionJson.js';
 
 const previewViewTypes = new Set(['jsonlPreview.text', 'jsonlPreview.large']);
 
@@ -79,6 +80,19 @@ async function previewTerminalSelection(): Promise<void> {
 }
 
 async function previewContent(content: string): Promise<void> {
+  const config = settings();
+  const candidates = selectionJsonCandidates(content, { disallowComments: !config.allowComments, allowTrailingComma: config.allowTrailingComma });
+  if (candidates.length === 1) content = candidates[0]!;
+  else if (candidates.length > 1) {
+    const chinese = vscode.env.language.toLowerCase().startsWith('zh');
+    const picked = await vscode.window.showQuickPick(candidates.map((value, index) => ({
+      label: `JSON ${index + 1}`,
+      description: value.replace(/\s+/g, ' ').slice(0, 160),
+      content: value
+    })), { placeHolder: chinese ? '找到多段 JSON，请选择要预览的内容' : 'Multiple JSON values found. Select one to preview.' });
+    if (!picked) return;
+    content = picked.content;
+  }
   const document = await vscode.workspace.openTextDocument({ content });
   await openPreview(document.uri);
 }
