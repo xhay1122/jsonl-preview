@@ -92,7 +92,8 @@
       },
       {
         "command": "jsonlPreview.previewSelection",
-        "title": "%command.previewSelection%"
+        "title": "%command.previewSelection%",
+        "enablement": "editorHasSelection"
       },
       {
         "command": "jsonlPreview.previewTerminalSelection",

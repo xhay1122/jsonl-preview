@@ -18,6 +18,8 @@ Use **JSON(L) Preview: Open Preview** or **Open With...**. The command can force
 
 Select JSON or JSON Lines content in any text editor, then right-click and choose **JSON(L) Preview: Preview Selection** to open it in a temporary preview document.
 
+For large files unavailable to the extension host, selection preview uses the editor's copy command without loading the entire file into the preview. Large-file and terminal selection previews temporarily use the system clipboard and can restore only its plain text; existing images, rich text, and other non-text formats are lost. Save any clipboard content you need before using these previews. Repeated requests during selection reading are ignored.
+
 Enter a plain value to search JSON scalar values; in JSONL previews this filters the table to matching records. JMESPath expressions such as `users[?active].name` remain available for projections and structured record filtering. Right-click a node to copy data or a directly reusable JMESPath-compatible JSONPath; JSONL row details support the same actions.
 
 String scalar values provide inline actions to view their full content, copy them, or open them in a temporary tab. Hold `Alt`/`Option` while opening content to reuse the current tab instead. The full-content viewer supports `Ctrl`/`Cmd`+`F` search and context-menu actions for selected text.
@@ -54,6 +56,8 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 使用 **JSON(L) Preview: Open Preview** 命令或 **打开方式...（Open With...）** 即可打开预览。该命令可以强制打开 `.txt` 等其他扩展名的文件，并根据内容识别为 JSON 或 JSON Lines。没有未保存修改的本地 JSONL 和 NDJSON 文件超过配置阈值后会使用只读流式读取，因此扩展宿主和 Webview 都不会接收完整文件内容。JSON 文件、其他扩展名的文件、非本地文件 URI 和包含未保存修改的文档使用普通模式，并受普通模式大小上限约束。
 
 在任意文本编辑器中选中 JSON 或 JSON Lines 内容，右键选择 **JSON(L) 预览: 预览所选内容**，即可通过临时文档打开预览。
+
+对于未同步到扩展的大文件，选区预览会通过编辑器的复制命令读取所选内容，无需将整个文件加载到预览中。大文件和终端选区预览都会临时使用系统剪贴板，且只能恢复原来的纯文本；原有图片、富文本及其他非文本格式会丢失。请先保存需要保留的剪贴板内容。读取期间重复触发这两种预览会被忽略。
 
 输入普通文本可以搜索 JSON 中的标量值；在 JSONL 预览中，则会筛选出匹配的记录。也可以使用 `users[?active].name` 等 JMESPath 表达式进行投影和结构化记录筛选。右键单击节点，可以复制数据或可直接复用、兼容 JMESPath 的 JSONPath；JSONL 行详情也支持相同操作。
 

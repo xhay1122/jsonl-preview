@@ -8,6 +8,7 @@ import { RepairPreviewProvider } from './editors/previewController.js';
 import type { PreviewSettings } from './shared/settings.js';
 import { TextDocumentSource } from './document/documentSource.js';
 import { randomUUID } from 'node:crypto';
+import { readEditorSelection, readTerminalSelection, SELECTION_READ_BUSY } from './editors/editorSelection.js';
 
 const previewViewTypes = new Set(['jsonlPreview.text', 'jsonlPreview.large']);
 
@@ -64,20 +65,15 @@ async function openPreview(input?: vscode.Uri): Promise<void> {
 }
 
 async function previewSelection(): Promise<void> {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor || editor.selection.isEmpty) { await vscode.window.showInformationMessage('Select JSON or JSON Lines content first.'); return; }
-  await previewContent(editor.document.getText(editor.selection));
+  const content = await readEditorSelection();
+  if (content === SELECTION_READ_BUSY) return;
+  if (!content) { await vscode.window.showInformationMessage('Select JSON or JSON Lines content first.'); return; }
+  await previewContent(content);
 }
 
 async function previewTerminalSelection(): Promise<void> {
-  const originalClipboard = await vscode.env.clipboard.readText();
-  let content: string | undefined;
-  try {
-    await vscode.commands.executeCommand('workbench.action.terminal.copySelection');
-    content = await vscode.env.clipboard.readText();
-  } finally {
-    if (content !== undefined && await vscode.env.clipboard.readText() === content) await vscode.env.clipboard.writeText(originalClipboard);
-  }
+  const content = await readTerminalSelection();
+  if (content === SELECTION_READ_BUSY) return;
   if (!content) { await vscode.window.showInformationMessage('Select JSON or JSON Lines content in the terminal first.'); return; }
   await previewContent(content);
 }
