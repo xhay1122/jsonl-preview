@@ -1,0 +1,62 @@
+{
+  "description": "时间字段预览示例：原值后会追加灰色的当前时区时间，复制时仍使用原值。",
+  "timezoneHint": "默认使用系统时区，也可设置 jsonlPreview.timezone 为 Asia/Shanghai。以下主要示例均对应北京时间 2024-01-01 08:00:00。",
+  "unixSeconds": {
+    "timestamp": 1704067200,
+    "date": 1704067200,
+    "created_at": 1704067200
+  },
+  "unixMilliseconds": {
+    "timestamp": 1704067200000,
+    "date": 1704067200000,
+    "createdAt": 1704067200000
+  },
+  "numericStrings": {
+    "timestamp": "1704067200",
+    "date": "1704067200000",
+    "updated_at": "1704067200"
+  },
+  "isoWithTimezone": {
+    "createdAt": "2024-01-01T00:00:00Z",
+    "updatedAt": "2024-01-01T08:00:00+08:00",
+    "publishedAt": "2023-12-31T19:00:00-05:00"
+  },
+  "nestedEvents": [
+    {
+      "name": "创建记录",
+      "timestamp": 1704067200
+    },
+    {
+      "name": "一小时后更新",
+      "updatedAt": "2024-01-01T01:00:00Z"
+    }
+  ],
+  "epoch": {
+    "timestamp": 0
+  },
+  "explicitUnits": {
+    "description": "明确标注单位后，早期时间戳也能正确识别，以下都对应 UTC 1970-01-02 00:00:00。",
+    "timestamp_ms": 86400000,
+    "timestampMilliseconds": "86400000",
+    "timestamp_seconds": 86400,
+    "createdAtSec": "86400"
+  },
+  "validLeapDay": {
+    "date": "2024-02-29T00:30:00+08:00"
+  },
+  "ambiguousAndInvalid": {
+    "description": "没有明确单位的短时间戳和非法日历日期不显示时间注释。",
+    "timestamp": 86400000,
+    "created_at": "86400000",
+    "date": "2024-02-30T00:00:00Z",
+    "updatedAt": "2023-02-29T00:00:00+08:00"
+  },
+  "unchangedValues": {
+    "description": "以下值不会追加时间注释：普通 ID、无明确时区的字符串、无效时间和空值。",
+    "id": 1704067200,
+    "date": "2024-01-01",
+    "createdAt": "2024-01-01T00:00:00",
+    "timestamp": "invalid timestamp",
+    "deletedAt": null
+  }
+}

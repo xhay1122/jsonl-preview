@@ -165,6 +165,73 @@ describe('React webview app', () => {
     expect(await screen.findByText(expected)).toBeTruthy();
   });
 
+  it('uses the same time recognition in JSONL cells and row details', async () => {
+    render(<App />);
+    const cells = { id: 1704067200, timestamp: 86400000, timestamp_ms: '86400000', date: '2024-02-30T00:00:00Z', createdAt: '2024-02-29T00:30:00+08:00' };
+    act(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'jsonl', revision: 'shared-times', byteLength: 200, parseMilliseconds: 1, errors: 0, recordCount: 1, fields: Object.keys(cells), locale: 'en', timezone: 'UTC' }, uiState: {}
+    } })));
+    const request = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page' || message.type === 'query');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    act(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page', rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: JSON.stringify(cells), cells }],
+      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      queryRevision: 'queryRevision' in request ? request.queryRevision : 1
+    } })));
+    const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' });
+    const early = formatter.format(new Date(86400000));
+    const leap = formatter.format(new Date(cells.createdAt));
+    const grid = screen.getByRole('grid');
+    expect([...grid.querySelectorAll('.cell-value')].map((cell) => cell.textContent)).toEqual(['1704067200', '86400000', early, cells.date, leap]);
+    fireEvent.click(screen.getByText('1704067200'));
+    await screen.findByText('Line 1');
+    const details = document.querySelector('.drawer-tree')!;
+    expect([...details.querySelectorAll('.timestamp-annotation')].map((annotation) => annotation.textContent)).toEqual([` (${early})`, ` (${leap})`]);
+    expect([...details.querySelectorAll('.json-value')].map((scalar) => scalar.firstChild?.textContent)).toEqual(Object.values(cells).map(String));
+  });
+
+  it.each([
+    ['time.id', '/time/id', { time: { id: 1704067200 } }, 1704067200, undefined],
+    ['["timestamp.ms"]', '/timestamp.ms', { 'timestamp.ms': 86400000 }, 86400000, 86400000],
+    ['timestamp/ms', '/timestamp~1ms', { 'timestamp/ms': 86400000 }, 86400000, 86400000],
+    ['timestamp~1ms', '/timestamp~01ms', { 'timestamp~1ms': 86400000 }, 86400000, undefined],
+    ['["time"].createdAt', '/time/createdAt', { time: { createdAt: 1704067200 } }, 1704067200, 1704067200000],
+    ['[""]', '/', { '': 1704067200 }, 1704067200, undefined],
+    ['$', '', 1704067200, 1704067200, undefined]
+  ])('matches table and detail time recognition for %s', async (field, pointer, record, value, milliseconds) => {
+    render(<App />);
+    act(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'jsonl', revision: 'leaf-times', byteLength: 100, parseMilliseconds: 1, errors: 0, recordCount: 1,
+        fields: [field], fieldPointers: { [field]: pointer }, locale: 'en', timezone: 'UTC' }, uiState: {}
+    } })));
+    const request = await waitFor(() => {
+      const found = bridge.messages.findLast((message) => message.type === 'page' || message.type === 'query');
+      expect(found).toBeTruthy();
+      return found!;
+    });
+    act(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'page', rows: [{ resultIndex: 1, physicalLine: 1, status: 'valid', raw: JSON.stringify(record), cells: { [field]: value } }],
+      total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
+      queryRevision: 'queryRevision' in request ? request.queryRevision : 1
+    } })));
+    const formatted = milliseconds === undefined ? undefined : new Intl.DateTimeFormat('en-US', {
+      dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC'
+    }).format(new Date(milliseconds));
+    const cell = screen.getByRole('grid').querySelector('.cell-value')!;
+    expect(cell.textContent).toBe(formatted ?? String(value));
+    fireEvent.contextMenu(cell);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy Cell' }));
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: formatted ?? String(value) });
+    fireEvent.click(cell);
+    await screen.findByText('Line 1');
+    const detail = document.querySelector('.drawer-tree .json-value')!;
+    expect(detail.firstChild?.textContent).toBe(String(value));
+    expect(detail.querySelector('.timestamp-annotation')?.textContent).toBe(formatted === undefined ? undefined : ` (${formatted})`);
+  });
+
   it('loads a complete large record and opens long text in a copyable second drawer', async () => {
     render(<App />);
     window.dispatchEvent(new MessageEvent('message', { data: {
@@ -384,6 +451,69 @@ describe('React webview app', () => {
     expect(bridge.messages.some((message) => message.type === 'children')).toBe(false);
     await userEvent.click(screen.getByText('Load more (1/1000)'));
     expect(bridge.messages).toContainEqual(expect.objectContaining({ type: 'children', nodeId: 'root', offset: 1 }));
+  });
+
+  it.each([
+    ['timestamp', 'number', '1704067200', 'UTC', 1704067200000],
+    ['date', 'number', '1704067200000', 'Asia/Shanghai', 1704067200000],
+    ['created_at', 'string', '1704067200', 'America/New_York', 1704067200000],
+    ['createdAt', 'string', '2024-01-01T00:00:00Z', 'system', 1704067200000],
+    ['timestamp_ms', 'number', '86400000', 'UTC', 86400000],
+    ['timestamp_seconds', 'string', '86400', 'UTC', 86400000],
+    ['date', 'string', '2024-02-29T00:30:00+08:00', 'UTC', Date.parse('2024-02-29T00:30:00+08:00')],
+    ['timestamp', 'number', '0', 'UTC', 0]
+  ])('appends local time to JSON %s values in %s', async (key, type, value, timezone, milliseconds) => {
+    render(<App />);
+    const root = { nodeId: 'root', type: 'object', offset: 0, length: 100, childrenCount: 1, pointer: '', jsonPath: '@' };
+    const child = { nodeId: 'child', key, type, offset: 1, length: value.length, childrenCount: 0, pointer: `/${key}`, jsonPath: `@.${key}`, displayValue: value };
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'json', revision: 'times', byteLength: 100, parseMilliseconds: 1, errors: 0, root, children: [child], locale: 'zh-cn', timezone }, uiState: {}
+    } }));
+    await screen.findByText(key);
+    const expected = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', ...(timezone === 'system' ? {} : { timeZone: timezone }) }).format(new Date(milliseconds));
+    const scalar = document.querySelector('.json-value')!;
+    expect(scalar.firstChild?.textContent).toBe(value);
+    expect(scalar.querySelector('.timestamp-annotation')?.textContent).toBe(` (${expected})`);
+    fireEvent.contextMenu(scalar);
+    fireEvent.click(screen.getByRole('menuitem', { name: '复制值' }));
+    expect(bridge.messages).toContainEqual({ type: 'copy', text: value });
+  });
+
+  it.each([
+    ['id', '1704067200', 'UTC'],
+    ['format', '1704067200', 'UTC'],
+    ['timestamp', 'invalid', 'UTC'],
+    ['timestamp', '86400000', 'UTC'],
+    ['date', '2024-02-30T00:00:00Z', 'UTC'],
+    ['date', '2024-01-01T00:00:00', 'UTC'],
+    ['timestamp', '1704067200', 'Invalid/Zone']
+  ])('keeps ambiguous or invalid JSON times unchanged (%s, %s, %s)', async (key, value, timezone) => {
+    render(<App />);
+    const root = { nodeId: 'root', key, type: 'string', offset: 0, length: value.length, childrenCount: 0, pointer: '', jsonPath: '@', displayValue: value };
+    window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'json', revision: 'invalid-times', byteLength: 100, parseMilliseconds: 1, errors: 0, root, locale: 'en', timezone }, uiState: {}
+    } }));
+    expect(await screen.findByText(value)).toBeTruthy();
+    expect(document.querySelector('.timestamp-annotation')).toBeNull();
+  });
+
+  it('annotates nested JSON query results', async () => {
+    render(<App />);
+    act(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'init', summary: { kind: 'json', revision: 'query-times', byteLength: 100, parseMilliseconds: 1, errors: 0, locale: 'en', timezone: 'Asia/Shanghai' }, uiState: {}
+    } })));
+    await userEvent.type(screen.getByRole('searchbox'), 'event');
+    const search = await waitFor(() => {
+      const request = bridge.messages.findLast((message) => message.type === 'jsonSearch');
+      expect(request).toBeTruthy();
+      return request!;
+    });
+    act(() => window.dispatchEvent(new MessageEvent('message', { data: {
+      type: 'search', searchRevision: 'searchRevision' in search ? search.searchRevision : 0, query: 'event', result: { query: 'event', result: { nested: { timestamp: 1704067200 } } }
+    } })));
+    await screen.findByText('timestamp');
+    const expected = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'Asia/Shanghai' }).format(new Date(1704067200000));
+    expect(document.querySelector('.timestamp-annotation')?.textContent).toBe(` (${expected})`);
   });
 
   it('uses consistent semantic icons for property, value, JSONPath, viewing, and tab actions', async () => {

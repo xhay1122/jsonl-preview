@@ -8,6 +8,7 @@ Open these files in VS Code and run **JSON(L) Preview: Open Preview**, or use
 | File | Coverage |
 | --- | --- |
 | `catalog.json` | Nested objects and arrays, Unicode, dates, nulls, booleans, and an integer larger than JavaScript's safe range. |
+| `timestamps.json` | Gray local-time annotations for Unix seconds/milliseconds, numeric strings, explicit units, ISO timezone offsets, leap days, nested events, and the Unix epoch; includes ambiguous timestamps and invalid dates that remain unchanged. |
 | `edge-cases.json` | Empty containers, escaped strings, special property names, duplicate keys, deep lazy expansion, timezone variants, and exact numeric spellings. |
 | `jsonc-options.json` | Comments and trailing commas. It parses only when both JSON compatibility settings are enabled. |
 | `repairable.json` | Missing closing delimiters at EOF; use it to test repair preview. |

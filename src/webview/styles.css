@@ -85,6 +85,7 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .json-value { display: -webkit-box; min-width: 0; overflow: hidden; flex: 1 1 auto; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; line-height: 20px; white-space: normal; }
 .value-string { color: var(--vscode-debugTokenExpression-string, #ce9178); }
 .value-number { color: var(--vscode-debugTokenExpression-number, #b5cea8); }
+.timestamp-annotation { color: var(--muted, #888); font-weight: 400; }
 .value-boolean { color: var(--vscode-debugTokenExpression-boolean, #569cd6); font-weight: 600; }
 .value-null, .value-undefined { color: var(--muted); font-style: italic; }
 .json-value.value-null, .json-value.value-undefined { flex: 0 0 auto; overflow: visible; padding-inline-end: 2px; }

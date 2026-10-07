@@ -23,6 +23,7 @@ import { createInitialState, reducer, type AppState, type TreeState } from './st
 import { isHostMessage, type HostMessage, type SortState, type WebviewSummary } from './protocol.js';
 import { send, vscode } from './bridge.js';
 import { setLocale, tr } from './i18n.js';
+import { formatTimestamp, parseTimestamp } from './dateTime.js';
 function jsonText(value: unknown, pretty = true): string {
   const result = JSON.stringify(value, null, pretty ? 2 : 0);
   return result === undefined ? String(value) : result;
@@ -36,21 +37,6 @@ function maxAutoDepth(summary: WebviewSummary): number {
 }
 const PHYSICAL_LINE_SORT = '\u0000physicalLine';
 const ERROR_TOAST_DURATION_MS = 4000;
-const dateFormatters = new Map<string, Intl.DateTimeFormat>();
-function dateFormatter(locale?: string, timezone?: string): Intl.DateTimeFormat {
-  const language = locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en-US';
-  const zone = timezone && timezone !== 'system' ? timezone : 'system';
-  const key = `${language}:${zone}`;
-  let formatter = dateFormatters.get(key);
-  if (!formatter) {
-    formatter = new Intl.DateTimeFormat(language, {
-      dateStyle: 'medium', timeStyle: 'medium',
-      ...(zone !== 'system' ? { timeZone: zone } : {})
-    });
-    dateFormatters.set(key, formatter);
-  }
-  return formatter;
-}
 function sortSpec(sort?: SortState | null, fieldPointers?: Record<string, string>): { path: string; direction: 'asc' | 'desc' } | { by: 'physicalLine'; direction: 'asc' | 'desc' } | undefined {
   if (!sort) return undefined;
   if (sort.field === PHYSICAL_LINE_SORT) return sort.direction === 'asc' ? undefined : { by: 'physicalLine', direction: 'desc' };
@@ -73,24 +59,21 @@ function selectedTextWithin(element: Element): string | undefined {
   return text.length > 0 ? text : undefined;
 }
 
-function displayValue(value: unknown, summary: WebviewSummary): { text: string; title?: string } {
+function displayValue(value: unknown, summary: WebviewSummary, field?: string): { text: string; title?: string } {
   if (value === undefined) return { text: '—' };
   if (value === null) return { text: 'null' };
-  let milliseconds: number | undefined;
-  if (typeof value === 'number' && Number.isInteger(value)) {
-    const digits = String(Math.abs(value)).length;
-    if (digits === 10) milliseconds = value * 1000;
-    else if (digits === 13) milliseconds = value;
-  } else if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-    if (!/(?:Z|[+-]\d{2}:?\d{2})$/.test(value)) return { text: value, title: tr('timezoneUnknown') };
-    const parsed = Date.parse(value);
-    if (!Number.isNaN(parsed)) milliseconds = parsed;
-  }
+  // Column labels describe paths and may quote literal keys; use the actual
+  // leaf property, matching the field passed by the record detail tree.
+  const pointer = field === undefined ? undefined : summary.fieldPointers?.[field];
+  const property = pointer === undefined
+    ? (summary.fieldPointers === undefined && field !== undefined && !/[.\[\]]/.test(field) ? field : undefined)
+    : pointer === '' ? undefined : pointer.slice(pointer.lastIndexOf('/') + 1).replace(/~1/g, '/').replace(/~0/g, '~');
+  const milliseconds = parseTimestamp(value, property);
   if (milliseconds !== undefined) {
-    try {
-      return { text: dateFormatter(summary.locale, summary.timezone).format(new Date(milliseconds)), title: String(value) };
-    } catch { /* keep the original value */ }
+    const formatted = formatTimestamp(milliseconds, summary);
+    if (formatted) return { text: formatted.text, title: String(value) };
   }
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) return { text: value, title: tr('timezoneUnknown') };
   if (typeof value === 'string') return { text: value };
   return { text: isContainer(value) ? jsonText(value, false) : String(value) };
 }
@@ -100,15 +83,24 @@ interface MenuState { x: number; y: number; items: MenuItem[] }
 interface DrawerState { title: string; value?: unknown; text?: string; physicalLine?: number; loading?: boolean }
 interface FullTextState { text: string; physicalLine?: number; pointer?: string }
 const AltKeyContext = createContext(false);
+const TimeDisplayContext = createContext<Pick<WebviewSummary, 'locale' | 'timezone'>>({});
+
+function TimeAnnotation({ value, field }: { value: unknown; field?: string }): ReactNode {
+  const summary = useContext(TimeDisplayContext);
+  const milliseconds = parseTimestamp(value, field);
+  if (milliseconds === undefined) return null;
+  const formatted = formatTimestamp(milliseconds, summary);
+  return formatted ? <span className="timestamp-annotation" title={formatted.timezone}> ({formatted.text})</span> : null;
+}
 
 function pointerSegment(value: string): string { return value.replace(/~/g, '~0').replace(/\//g, '~1'); }
 
-function JsonScalarValue({ text, kind, actions, onExpand, onCopy, onOpen }: {
-  text: string; kind: string; actions: boolean; onExpand(): void; onCopy(): void; onOpen(current: boolean): void;
+function JsonScalarValue({ text, kind, annotation, actions, onExpand, onCopy, onOpen }: {
+  text: string; kind: string; annotation?: ReactNode; actions: boolean; onExpand(): void; onCopy(): void; onOpen(current: boolean): void;
 }): ReactNode {
   const altPressed = useContext(AltKeyContext);
   return <>
-    <span className={`json-value value-${kind}`} title={text}>{text}</span>
+    <span className={`json-value value-${kind}`} title={text}>{text}{annotation}</span>
     {actions && <span className="inline-actions">
       <button className="inline-action" type="button" title={tr('expand')} aria-label={tr('expand')} onClick={(event) => { event.stopPropagation(); onExpand(); }}><BrowseIcon /></button>
       <button className="inline-action" type="button" title={tr('copyValue')} aria-label={tr('copyValue')} onClick={(event) => { event.stopPropagation(); onCopy(); }}><CopyIcon /></button>
@@ -244,7 +236,7 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{label}</span>
       {expandable ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span>
-        : <JsonScalarValue text={shown} kind={valueKind(value)} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string, pointer)} onCopy={() => onCopyText?.(value as string, pointer)} onOpen={(current) => onOpenText?.(value as string, current, pointer)} />}
+        : <JsonScalarValue text={shown} kind={valueKind(value)} annotation={<TimeAnnotation value={value} field={label} />} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string, pointer)} onCopy={() => onCopyText?.(value as string, pointer)} onOpen={(current) => onOpenText?.(value as string, current, pointer)} />}
     </div>
     {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} pointer={childPointer(key)} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}</div>}
   </>;
@@ -284,7 +276,7 @@ const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tr
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{node.key ?? '@'}</span>
       {expandable ? <span className={`shape shape-${node.type}`}>{node.type === 'array' ? '[ ]' : '{ }'}&nbsp; {node.childrenCount}</span>
-        : <JsonScalarValue text={text} kind={node.type} actions={node.type === 'string'} onExpand={() => onLongText(text)} onCopy={() => onCopyText(text)} onOpen={(current) => onOpenText(text, current)} />}
+        : <JsonScalarValue text={text} kind={node.type} annotation={<TimeAnnotation value={node.type === 'number' ? Number(text) : node.type === 'string' ? text : undefined} {...(node.key === undefined ? {} : { field: node.key })} />} actions={node.type === 'string'} onExpand={() => onLongText(text)} onCopy={() => onCopyText(text)} onOpen={(current) => onOpenText(text, current)} />}
       {loading && <span className="loading-label">{tr('loading')}</span>}
     </div>
     {open && <div role="group">
@@ -414,7 +406,7 @@ function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
             {fields.map((field) => <div className="cell" key={field}><span className="loading-cell" /></div>)}
           </div>) : rows.map((row, rowIndex) => <div key={`${row.resultIndex}-${row.physicalLine}`} data-grid-row className={`grid-row ${row.error ? 'invalid' : ''}`} role="row" aria-rowindex={row.resultIndex + 1} tabIndex={rowIndex === 0 ? 0 : -1} onClick={() => onRecord(row)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onRecord(row); } else navigateRows(event, rowIndex); }}>
             <button type="button" className="cell line-cell" title={tr('sourceLine')} onClick={(event) => { event.stopPropagation(); send({ type: 'revealLine', line: row.physicalLine }); }}>{row.physicalLine}</button>
-            {fields.map((field) => { const shown = displayValue(row.cells[field], summary); return <div className="cell" role="gridcell" key={field}><span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span></div>; })}
+            {fields.map((field) => { const shown = displayValue(row.cells[field], summary, field); return <div className="cell" role="gridcell" key={field}><span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span></div>; })}
           </div>)}
         </div>
       </div>
@@ -447,8 +439,8 @@ function JsonlGrid({ state, onSort, onPage, onRecord, onCellMenu, onColumnWidths
     cell: ({ row }) => <button type="button" className="line-link" title={tr('sourceLine')} onClick={(event) => { event.stopPropagation(); send({ type: 'revealLine', line: row.physicalLine }); }}>{row.physicalLine}</button>
   }, ...fields.map((field): PrimaryTableCol<JsonlRow> => ({
     colKey: field, title: field, width: state.view.columnWidths?.[field] ?? 180, ellipsis: true, sorter: true, resize: { minWidth: 80, maxWidth: 1200 },
-    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(field), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(field); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.cells[field], displayValue(row.cells[field], summary).text, field) },
-    cell: ({ row }) => { const shown = displayValue(row.cells[field], summary); return <span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span>; }
+    attrs: ({ type, row }) => type === 'th' ? { 'aria-sort': ariaSort(field), onClick: (event: React.MouseEvent) => { if (!(event.target as Element).closest('.t-table__sort-icon')) onSort(field); } } : { onContextMenu: (event: React.MouseEvent) => onCellMenu(event, row, row.cells[field], displayValue(row.cells[field], summary, field).text, field) },
+    cell: ({ row }) => { const shown = displayValue(row.cells[field], summary, field); return <span className={`cell-value value-${valueKind(row.cells[field])}`} title={shown.title ?? shown.text}>{shown.text}</span>; }
   }))];
   const displayedSort: TableSort = { sortBy: currentSort?.field ?? PHYSICAL_LINE_SORT, descending: currentSort?.direction === 'desc' };
   const onTableSort = (next: TableSort) => {
@@ -665,7 +657,7 @@ export function App(): ReactNode {
   useEffect(() => { document.querySelector('#app')?.setAttribute('aria-busy', String(!summary)); }, [summary]);
   if (!summary) return <main className="loading-screen"><span className="loading-spinner" aria-hidden /><span>{tr('preparing')}</span></main>;
   const extra = summary.kind === 'json' ? (state.searchResult?.query ? tr('expression', { value: state.searchResult.query }) : undefined) : tr('results', { count: state.page.total });
-  return <AltKeyContext.Provider value={altPressed}><main className={summary.kind === 'jsonl' ? 'jsonl-layout' : undefined}>
+  return <TimeDisplayContext.Provider value={summary}><AltKeyContext.Provider value={altPressed}><main className={summary.kind === 'jsonl' ? 'jsonl-layout' : undefined}>
     <Toolbar summary={summary} query={state.view.query ?? ''} onQuery={(query) => dispatch({ type: 'setQuery', query })} onFormat={() => send({ type: 'format' })} onRepair={() => send({ type: 'repair' })} onExport={() => send({ type: 'export', queryRevision: state.queryRevision })} onOpenSource={() => send({ type: 'openSource' })} />
     <StatusBar summary={summary} extra={extra} progress={state.progressRecords} />
     {summary.kind === 'json'
@@ -687,5 +679,5 @@ export function App(): ReactNode {
     {state.error && <div className="toast error-toast" role="alert" onClick={() => dispatch({ type: 'clearError' })}>{state.error}</div>}
     {toast && <div className="toast" role="status">{toast}</div>}
     <div className="sr-only" aria-live="polite" aria-atomic="true">{toast ?? state.error ?? ''}</div>
-  </main></AltKeyContext.Provider>;
+  </main></AltKeyContext.Provider></TimeDisplayContext.Provider>;
 }
