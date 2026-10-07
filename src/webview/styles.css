@@ -71,11 +71,11 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible { outline: 2
 .surface-title { font-weight: 650; }
 
 .tree { min-height: 80px; padding: 6px 0 10px; font-family: var(--vscode-editor-font-family); }
-.tree-row { --indent: calc(var(--level) * 20px); position: relative; display: flex; min-width: 0; align-items: flex-start; gap: 8px; min-height: 36px; padding: 8px 12px 8px calc(10px + var(--indent)); border-left: 2px solid transparent; cursor: default; user-select: text; }
+.tree-row { --indent: calc(var(--level) * 20px); position: relative; display: flex; min-width: 0; align-items: flex-start; gap: 8px; min-height: 36px; line-height: 20px; padding: 8px 12px 8px calc(10px + var(--indent)); border-left: 2px solid transparent; cursor: default; user-select: text; }
 .tree-row.expandable { cursor: pointer; }
 .tree-row:hover { background: var(--vscode-list-hoverBackground); }
 .tree-row:focus { background: var(--vscode-list-focusBackground); border-left-color: var(--vscode-focusBorder); outline: none; }
-.chevron { flex: 0 0 14px; width: 14px; height: 14px; color: var(--muted); transition: transform 120ms ease; }
+.chevron { flex: 0 0 14px; width: 14px; height: 14px; margin-top: 3px; color: var(--muted); transition: transform 120ms ease; }
 .tree-row:not(.expandable) > .chevron { visibility: hidden; }
 .chevron.open { transform: rotate(90deg); }
 .json-key { flex: 0 0 auto; color: var(--vscode-symbolIcon-propertyForeground, #9cdcfe); font-weight: 600; }
