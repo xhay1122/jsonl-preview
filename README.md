@@ -26,7 +26,7 @@ Enter a plain value to search JSON scalar values; in JSONL previews this filters
 
 String scalar values provide inline actions to view their full content, copy them, or open them in a temporary tab. Hold `Alt`/`Option` while opening content to reuse the current tab instead. The full-content viewer supports `Ctrl`/`Cmd`+`F` search and context-menu actions for selected text.
 
-JSON trees, query results, and JSONL row details append a gray local-time annotation to recognized time values. Fields such as `date`, `timestamp`, `created_at`, and `createdAt` support Unix seconds or milliseconds, including numeric strings; ISO timestamps with an explicit zone are also recognized. The original value remains visible and is used when copying. Annotations use `jsonlPreview.timezone` (the system time zone by default); date-time strings without an explicit zone remain unchanged.
+JSON trees, query results, and JSONL row details append a gray local-time annotation with three millisecond digits to recognized time values. Fields such as `date`, `timestamp`, `created_at`, and `createdAt` support Unix seconds or milliseconds, including numeric strings; ISO timestamps with an explicit zone are also recognized. The original value remains visible and is used when copying. Annotations use `jsonlPreview.timezone` (the system time zone by default); date-time strings without an explicit zone remain unchanged.
 
 Time recognition is shared with the JSONL table. Explicit field suffixes such as `_ms`, `Milliseconds`, `_seconds`, or `Sec` take priority. Without a unit suffix, only 10-digit seconds, 13-digit milliseconds, and zero are recognized as a heuristic. Other numeric values and invalid calendar dates remain unchanged.
 
@@ -71,7 +71,7 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 
 字符串标量值提供行内操作，可查看完整内容、复制，或在临时标签页中打开。打开内容时按住 `Alt`/`Option`，则会改为复用当前标签页。完整内容查看器支持使用 `Ctrl`/`Cmd`+`F` 搜索，也支持通过右键菜单操作选中的文本。
 
-JSON 树、查询结果和 JSONL 行详情会在识别到的时间值后追加灰色的本地时间。`date`、`timestamp`、`created_at`、`createdAt` 等字段支持秒或毫秒时间戳（包括数字字符串），也支持带明确时区的 ISO 时间。原值仍然显示，复制时也使用原值。时间注释遵循 `jsonlPreview.timezone` 设置，默认使用系统时区；不带明确时区的日期时间字符串保留原样。
+JSON 树、查询结果和 JSONL 行详情会在识别到的时间值后追加灰色的本地时间，精确到毫秒（固定显示三位，包括 `.000`）。`date`、`timestamp`、`created_at`、`createdAt` 等字段支持秒或毫秒时间戳（包括数字字符串），也支持带明确时区的 ISO 时间。原值仍然显示，复制时也使用原值。时间注释遵循 `jsonlPreview.timezone` 设置，默认使用系统时区；不带明确时区的日期时间字符串保留原样。
 
 时间识别与 JSONL 表格共用规则。字段中的 `_ms`、`Milliseconds`、`_seconds`、`Sec` 等明确单位后缀优先；没有单位后缀时，仅启发式识别 10 位秒、13 位毫秒和零值。其他数值及非法日历日期保留原样。
 

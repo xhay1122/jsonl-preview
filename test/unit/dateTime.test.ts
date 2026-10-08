@@ -49,9 +49,19 @@ describe('timestamp recognition', () => {
 describe('timestamp formatting', () => {
   it('formats using the selected timezone and reports it for the tooltip', () => {
     const options = { locale: 'zh-cn', timezone: 'Asia/Shanghai' };
-    const expected = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', timeZone: options.timezone }).format(new Date(0));
+    const expected = '1970年1月1日 08:00:00.000';
     expect(formatTimestamp(0, options)).toEqual({ text: expected, timezone: options.timezone });
     expect(formatTimestamp(0, options)).toEqual({ text: expected, timezone: options.timezone });
+  });
+
+  it.each([
+    [0, 'zh-cn', 'Asia/Shanghai', '1970年1月1日 08:00:00.000'],
+    [1704067200007, 'zh-cn', 'Asia/Shanghai', '2024年1月1日 08:00:00.007'],
+    [1704067200123, 'zh-cn', 'UTC', '2024年1月1日 00:00:00.123'],
+    [1704067200999, 'en', 'America/New_York', 'Dec 31, 2023, 7:00:00.999 PM'],
+    [-1, 'en', 'UTC', 'Dec 31, 1969, 11:59:59.999 PM']
+  ])('shows three millisecond digits for %s in %s (%s)', (milliseconds, locale, timezone, expected) => {
+    expect(formatTimestamp(milliseconds, { locale, timezone })).toEqual({ text: expected, timezone });
   });
 
   it('falls back safely for invalid timezones or dates', () => {

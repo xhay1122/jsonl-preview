@@ -43,7 +43,9 @@ export function formatTimestamp(milliseconds: number, options: TimeDisplayOption
     let cached = formatters.get(key);
     if (!cached) {
       const formatter = new Intl.DateTimeFormat(language, {
-        dateStyle: 'medium', timeStyle: 'medium', ...(zone !== 'system' ? { timeZone: zone } : {})
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: language === 'zh-CN' ? '2-digit' : 'numeric', minute: '2-digit', second: '2-digit',
+        fractionalSecondDigits: 3, ...(zone !== 'system' ? { timeZone: zone } : {})
       });
       cached = { formatter, timezone: formatter.resolvedOptions().timeZone };
       formatters.set(key, cached);

@@ -161,7 +161,7 @@ describe('React webview app', () => {
       queryRevision: page && 'queryRevision' in page ? page.queryRevision : 1
     } }));
 
-    const expected = new Intl.DateTimeFormat(dateLocale, { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' }).format(new Date(value));
+    const expected = new Intl.DateTimeFormat(dateLocale, { year: 'numeric', month: 'short', day: 'numeric', hour: dateLocale === 'zh-CN' ? '2-digit' : 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, timeZone: 'UTC' }).format(new Date(value));
     expect(await screen.findByText(expected)).toBeTruthy();
   });
 
@@ -181,7 +181,7 @@ describe('React webview app', () => {
       total: 1, scannedRows: 1, matchedRows: 1, isComplete: true, offset: 0,
       queryRevision: 'queryRevision' in request ? request.queryRevision : 1
     } })));
-    const formatter = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC' });
+    const formatter = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, timeZone: 'UTC' });
     const early = formatter.format(new Date(86400000));
     const leap = formatter.format(new Date(cells.createdAt));
     const grid = screen.getByRole('grid');
@@ -218,7 +218,7 @@ describe('React webview app', () => {
       queryRevision: 'queryRevision' in request ? request.queryRevision : 1
     } })));
     const formatted = milliseconds === undefined ? undefined : new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'medium', timeStyle: 'medium', timeZone: 'UTC'
+      year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, timeZone: 'UTC'
     }).format(new Date(milliseconds));
     const cell = screen.getByRole('grid').querySelector('.cell-value')!;
     expect(cell.textContent).toBe(formatted ?? String(value));
@@ -456,6 +456,9 @@ describe('React webview app', () => {
   it.each([
     ['timestamp', 'number', '1704067200', 'UTC', 1704067200000],
     ['date', 'number', '1704067200000', 'Asia/Shanghai', 1704067200000],
+    ['timestamp', 'number', '1704067200123', 'Asia/Shanghai', 1704067200123],
+    ['createdAt', 'string', '2024-01-01T00:00:00.007Z', 'UTC', 1704067200007],
+    ['timestamp_seconds', 'string', '1704067200.999', 'UTC', 1704067200999],
     ['created_at', 'string', '1704067200', 'America/New_York', 1704067200000],
     ['createdAt', 'string', '2024-01-01T00:00:00Z', 'system', 1704067200000],
     ['timestamp_ms', 'number', '86400000', 'UTC', 86400000],
@@ -470,7 +473,7 @@ describe('React webview app', () => {
       type: 'init', summary: { kind: 'json', revision: 'times', byteLength: 100, parseMilliseconds: 1, errors: 0, root, children: [child], locale: 'zh-cn', timezone }, uiState: {}
     } }));
     await screen.findByText(key);
-    const expected = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', ...(timezone === 'system' ? {} : { timeZone: timezone }) }).format(new Date(milliseconds));
+    const expected = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, ...(timezone === 'system' ? {} : { timeZone: timezone }) }).format(new Date(milliseconds));
     const scalar = document.querySelector('.json-value')!;
     expect(scalar.firstChild?.textContent).toBe(value);
     expect(scalar.querySelector('.timestamp-annotation')?.textContent).toBe(` (${expected})`);
@@ -512,7 +515,7 @@ describe('React webview app', () => {
       type: 'search', searchRevision: 'searchRevision' in search ? search.searchRevision : 0, query: 'event', result: { query: 'event', result: { nested: { timestamp: 1704067200 } } }
     } })));
     await screen.findByText('timestamp');
-    const expected = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'medium', timeZone: 'Asia/Shanghai' }).format(new Date(1704067200000));
+    const expected = new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3, timeZone: 'Asia/Shanghai' }).format(new Date(1704067200000));
     expect(document.querySelector('.timestamp-annotation')?.textContent).toBe(` (${expected})`);
   });
 
