@@ -28,6 +28,7 @@ function settings(): PreviewSettings {
 export function activate(context: vscode.ExtensionContext): void {
   const client = new WorkerClient(vscode.Uri.joinPath(context.extensionUri, 'dist', 'worker.js').fsPath);
   const coordinator = new DocumentCoordinator(client); const repairPreview = new RepairPreviewProvider();
+  context.subscriptions.push(vscode.commands.registerCommand('jsonlPreview.previewClipboard', () => previewClipboard()));
   context.subscriptions.push(coordinator, client, repairPreview, vscode.workspace.registerTextDocumentContentProvider('jsonl-preview-repair', repairPreview));
   const textProvider = new JsonPreviewProvider(context.extensionUri, coordinator, client, repairPreview, context.workspaceState, settings), largeProvider = new JsonlPreviewProvider(context.extensionUri, coordinator, client, repairPreview, context.workspaceState, settings);
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('jsonlPreview.text', textProvider, { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
@@ -101,9 +102,17 @@ async function previewTerminalSelection(): Promise<void> {
   await previewContent(content);
 }
 
-async function previewContent(content: string): Promise<void> {
+async function previewClipboard(): Promise<void> {
+  await previewContent(await vscode.env.clipboard.readText(), false);
+}
+
+async function previewContent(content: string, preserveInvalid = true): Promise<void> {
   const config = settings();
-  const candidates = selectionJsonCandidates(content, { disallowComments: !config.allowComments, allowTrailingComma: config.allowTrailingComma });
+  const candidates = selectionJsonCandidates(content, { disallowComments: !config.allowComments, allowTrailingComma: config.allowTrailingComma }, preserveInvalid);
+  if (!preserveInvalid && candidates.length === 0) {
+    await vscode.window.showInformationMessage(vscode.env.language.toLowerCase().startsWith('zh') ? '剪贴板中未找到可提取的有效 JSON 或 JSON Lines。' : 'No extractable valid JSON or JSON Lines found in the clipboard.');
+    return;
+  }
   if (candidates.length === 1) content = candidates[0]!;
   else if (candidates.length > 1) {
     const chinese = vscode.env.language.toLowerCase().startsWith('zh');

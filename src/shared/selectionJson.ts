@@ -31,9 +31,12 @@ function looksStructured(text: string, offset = 0): boolean {
   return scanner.scan() !== SyntaxKind.Unknown;
 }
 
-/** Preserve complete or damaged JSON/JSONL; otherwise find embedded containers. */
-export function selectionJsonCandidates(text: string, options: ParseOptions = {}): string[] {
-  if (text.length > MAX_CHARACTERS) return [text];
+/** Preserve complete or damaged JSON/JSONL; otherwise find embedded containers.
+ * Disable preserveInvalid when only validated content should open a preview.
+ */
+export function selectionJsonCandidates(text: string, options: ParseOptions = {}, preserveInvalid = true): string[] {
+  const fallback = () => preserveInvalid ? [text] : [];
+  if (text.length > MAX_CHARACTERS) return fallback();
   const spans: Array<{ start: number; end: number }> = [];
   const stack: string[] = [];
   let start = 0, quoted = false, escaped = false;
@@ -72,46 +75,48 @@ export function selectionJsonCandidates(text: string, options: ParseOptions = {}
         start = index;
       }
       stack.push(char === '{' ? '}' : ']');
-      if (stack.length > MAX_DEPTH) return [text];
+      if (stack.length > MAX_DEPTH) return fallback();
     } else if (char === '}' || char === ']') {
       const close = stack.pop();
       if (close !== char) stack.length = 0;
       else if (!stack.length) {
         spans.push({ start, end: index + 1 });
-        if (spans.length > MAX_PARSES) return [text];
+        if (spans.length > MAX_PARSES) return fallback();
       }
     }
   }
 
   let parses = 0, characters = 0;
-  const valid = (value: string): boolean => {
+  const valid = (value: string, parseOptions = options): boolean => {
     if (++parses > MAX_PARSES || (characters += value.length) > MAX_CHARACTERS * 3) throw new Error('Extraction budget exceeded');
     const errors: ParseError[] = [];
-    return Boolean(parseTree(value, errors, options)) && errors.length === 0;
+    return Boolean(parseTree(value, errors, parseOptions)) && errors.length === 0;
   };
   try {
     if (valid(text)) return [text];
     const lines = text.split(/\r?\n/).filter((line) => line.trim());
     // Preserve mixed-validity JSONL too, including records with scalar roots.
     const structured = looksStructured(text);
-    if (lines.length > 1 && (looksStructured(lines[0]!) || valid(lines[0]!))) return [text];
+    if (lines.length > 1 && (looksStructured(lines[0]!) || valid(lines[0]!))) {
+      return preserveInvalid || lines.every((line) => valid(line, { disallowComments: true, allowTrailingComma: false })) ? [text] : [];
+    }
 
     const candidates: string[] = [];
     for (const span of spans) {
       const content = text.slice(span.start, span.end);
       if (valid(content)) candidates.push(content);
       // A malformed outer container must never become a valid child preview.
-      else if (structured) return [text];
+      else if (structured) return fallback();
     }
     if (structured) {
       // Allow a valid value followed by a same-line log suffix. Ambiguous or
       // damaged structured selections, including mixed-validity JSONL, stay whole.
       const span = spans[0];
       const suffix = span ? text.slice(span.end).trimEnd() : '';
-      if (spans.length !== 1 || candidates.length !== 1 || /[\r\n]/.test(suffix) || /^[\s]*[,}\]:]/.test(suffix)) return [text];
+      if (spans.length !== 1 || candidates.length !== 1 || /[\r\n]/.test(suffix) || /^[\s]*[,}\]:]/.test(suffix)) return fallback();
     }
     return candidates;
   } catch {
-    return [text];
+    return fallback();
   }
 }

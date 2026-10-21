@@ -32,6 +32,8 @@ Time recognition is shared with the JSONL table. Explicit field suffixes such as
 
 The preview does not execute workspace code or upload file content. Source changes are applied through VS Code edits and remain undoable.
 
+Run **JSON(L) Preview: Paste and Preview Clipboard JSON** from the Command Palette (search for `paste` or `clipboard`) to read clipboard text and open its JSON in a new temporary preview tab. Embedded objects and arrays are extracted using the same rules as selection preview; multiple matches show a picker. Valid JSON Lines stays intact. Empty, invalid, or extraction-budget-exceeding text shows a message without opening a tab. This command only reads the clipboard.
+
 ### Settings
 
 Settings are read when a preview opens. Reopen an existing preview after changing them.
@@ -77,6 +79,8 @@ JSON 树、查询结果和 JSONL 行详情会在识别到的时间值后追加�
 
 本插件不会执行工作区代码，也不会上传文件内容。对源文件的修改均通过 VS Code 编辑操作应用，并且可以撤销。
 
+在命令面板运行 **JSON(L) 预览: 粘贴并预览 JSON**（可搜索 `paste`、`粘贴` 或 `clipboard`），即可读取剪贴板文本并在新的临时标签页中预览 JSON。英文原名参与命令搜索，无需在中文名称中重复显示英文关键词。内嵌对象和数组复用选区预览的提取规则，多段匹配时可选择其中一段；有效的 JSON Lines 保持完整。剪贴板为空、内容无效或超过提取预算时，只提示而不创建标签页。此命令仅读取剪贴板。
+
 ### 设置项
 
 设置在打开预览时读取。修改后，请重新打开已有预览。
@@ -104,6 +108,7 @@ JSON 树、查询结果和 JSONL 行详情会在识别到的时间值后追加�
 
 ### Unreleased
 
+- Added a command to extract JSON from clipboard text and open it in a temporary preview tab.
 - Allowed the open-preview command to force-open JSON or JSON Lines content stored in files such as `.txt`.
 
 ### 0.1.11 — 2026-08-26

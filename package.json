@@ -2,7 +2,7 @@
   "name": "json-jsonl-preview",
   "displayName": "JSON / JSONL Preview",
   "description": "Fast, safe previews for JSON and JSON Lines files.",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "publisher": "xhay",
   "icon": "assets/icon.png",
   "license": "MIT",
@@ -45,6 +45,7 @@
     "onCustomEditor:jsonlPreview.large",
     "onCommand:jsonlPreview.openPreview",
     "onCommand:jsonlPreview.previewSelection",
+    "onCommand:jsonlPreview.previewClipboard",
     "onCommand:jsonlPreview.previewTerminalSelection"
   ],
   "extensionKind": [
@@ -94,6 +95,10 @@
         "command": "jsonlPreview.previewSelection",
         "title": "%command.previewSelection%",
         "enablement": "editorHasSelection"
+      },
+      {
+        "command": "jsonlPreview.previewClipboard",
+        "title": "%command.previewClipboard%"
       },
       {
         "command": "jsonlPreview.previewTerminalSelection",

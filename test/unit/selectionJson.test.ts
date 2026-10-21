@@ -121,4 +121,27 @@ describe('selectionJsonCandidates', () => {
     }
   });
 
+  it.each([
+    '{"a":}',
+    '{"a":1}\n{"b":}',
+    '{"nested":{"valid":true},}',
+    '42\n{"broken":}',
+    `payload=${'['.repeat(129)}0${']'.repeat(129)}`,
+    'x'.repeat(2 * 1024 * 1024 + 1),
+    'payload={} '.repeat(300),
+    '{}\n'.repeat(300)
+  ])('does not return invalid or over-budget text when preservation is disabled (%#)', (text) => {
+    expect(selectionJsonCandidates(text, {}, false)).toEqual([]);
+  });
+
+  it('respects parser settings when preservation is disabled', () => {
+    const text = 'INFO payload={/* comment */"a":1,} done';
+    expect(selectionJsonCandidates(text, { disallowComments: true }, false)).toEqual([]);
+    expect(selectionJsonCandidates(text, { disallowComments: false, allowTrailingComma: true }, false))
+      .toEqual(['{/* comment */"a":1,}']);
+    // JSON-only settings must not allow invalid JSON Lines through validation.
+    expect(selectionJsonCandidates('{"a":1,}\n{"b":2,}', { allowTrailingComma: true }, false)).toEqual([]);
+    expect(selectionJsonCandidates('{"a":1/* comment */}\n{"b":2}', { disallowComments: false }, false)).toEqual([]);
+  });
+
 });

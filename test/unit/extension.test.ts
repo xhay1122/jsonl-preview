@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   },
   openTextDocument: vi.fn(),
   executeCommand: vi.fn(),
+  readClipboard: vi.fn(),
+  writeClipboard: vi.fn(),
   stat: vi.fn()
 }));
 
@@ -32,7 +34,7 @@ vi.mock('vscode', () => ({
     textDocuments: [],
     fs: { stat: state.stat }
   },
-  env: { language: 'en' }
+  env: { language: 'en', clipboard: { readText: state.readClipboard, writeText: state.writeClipboard } }
 }));
 vi.mock('../../src/document/workerClient.js', () => ({ WorkerClient: class {} }));
 vi.mock('../../src/document/documentCoordinator.js', () => ({ DocumentCoordinator: class {} }));
@@ -177,5 +179,57 @@ describe('open preview command', () => {
     expect(state.window.showErrorMessage).toHaveBeenCalledOnce();
     expect(state.openTextDocument).not.toHaveBeenCalled();
     expect(state.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['INFO payload={"message":"日志 😀","id":12345678901234567890} done', '{"message":"日志 😀","id":12345678901234567890}'],
+    ['  [1,{"a":2}]\n', '  [1,{"a":2}]\n'],
+    ['{"a":1}\n{"b":2}\n', '{"a":1}\n{"b":2}\n'],
+    ['null', 'null']
+  ])('opens clipboard JSON in a new temporary preview without an active editor: %j', async (clipboard, content) => {
+    state.readClipboard.mockResolvedValue(clipboard);
+
+    await state.commands.get('jsonlPreview.previewClipboard')!();
+
+    expect(state.readClipboard).toHaveBeenCalledOnce();
+    expect(state.writeClipboard).not.toHaveBeenCalled();
+    expect(state.openTextDocument).toHaveBeenCalledExactlyOnceWith({ content });
+    expect(state.executeCommand).toHaveBeenCalledExactlyOnceWith('vscode.openWith', temporaryUri, 'jsonlPreview.text', { preview: false });
+  });
+
+  it('chooses between clipboard payloads without changing the active editor', async () => {
+    const { edit } = editor('{"selected":true}');
+    state.readClipboard.mockResolvedValue('request={"a":1} response={"b":2}');
+    state.window.showQuickPick.mockImplementation(async (items) => items[1]);
+
+    await state.commands.get('jsonlPreview.previewClipboard')!();
+
+    expect(state.window.showQuickPick.mock.calls[0]![0].map((item: { content: string }) => item.content)).toEqual(['{"a":1}', '{"b":2}']);
+    expect(state.openTextDocument).toHaveBeenCalledExactlyOnceWith({ content: '{"b":2}' });
+    expect(state.executeCommand).toHaveBeenCalledExactlyOnceWith('vscode.openWith', temporaryUri, 'jsonlPreview.text', { preview: false });
+    expect(edit).not.toHaveBeenCalled();
+    expect(state.writeClipboard).not.toHaveBeenCalled();
+  });
+
+  it('does not create a tab when clipboard selection is cancelled', async () => {
+    state.readClipboard.mockResolvedValue('request={"a":1} response={"b":2}');
+    state.window.showQuickPick.mockResolvedValue(undefined);
+
+    await state.commands.get('jsonlPreview.previewClipboard')!();
+
+    expect(state.window.showQuickPick).toHaveBeenCalledOnce();
+    expect(state.openTextDocument).not.toHaveBeenCalled();
+    expect(state.executeCommand).not.toHaveBeenCalled();
+  });
+
+  it.each(['', ' \n\t', 'no JSON here', '{"broken":}', 'payload={"broken":}', '{"valid":1}\n{"broken":}'])('does not create a clipboard tab without valid JSON: %j', async (content) => {
+    state.readClipboard.mockResolvedValue(content);
+
+    await state.commands.get('jsonlPreview.previewClipboard')!();
+
+    expect(state.window.showInformationMessage).toHaveBeenCalledExactlyOnceWith('No extractable valid JSON or JSON Lines found in the clipboard.');
+    expect(state.openTextDocument).not.toHaveBeenCalled();
+    expect(state.executeCommand).not.toHaveBeenCalled();
+    expect(state.writeClipboard).not.toHaveBeenCalled();
   });
 });
