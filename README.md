@@ -16,7 +16,7 @@ A safe, paged VS Code preview for JSON, JSONL and NDJSON. It provides a lazy JSO
 
 Use **JSON(L) Preview: Open Preview** or **Open With...**. The command can force-open files with other extensions, including `.txt`; their content is detected as JSON or JSON Lines. Clean local JSONL and NDJSON files above the configured threshold use the read-only streaming provider, so the extension host and webview never receive the complete file. JSON files, files with other extensions, non-file URIs, and documents with unsaved changes use normal mode and are subject to its size limit.
 
-Select JSON or JSON Lines content in any text editor, then right-click and choose **JSON(L) Preview: Preview Selection** to open it in a temporary preview document.
+Select JSON or JSON Lines content in any text editor, then right-click and choose **JSON(L) Preview: Preview Selection** to open it in a temporary preview document. The editor title preview icon (and **Open Preview** command) also previews the selection when the target is the active text editor. Without a selection, it opens the whole file. For an untitled document with just one non-empty line containing exactly one embedded JSON object or array, it first replaces the log text with that JSON (undoable), then opens the preview in the current tab.
 
 You can also select whole log lines in the editor or terminal. Selection preview extracts embedded JSON objects and arrays anywhere in the text, regardless of the log prefix or suffix. A single match opens directly; multiple matches show a picker. Complete JSON/JSONL selections stay intact, and malformed JSON/JSONL retains the usual parse diagnostics instead of being reduced to child values. Comment syntax is respected when enabled. Automatic extraction falls back to the original text above 2 Mi characters, 128 nesting levels, or its 256-parse budget.
 
@@ -61,7 +61,7 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 
 使用 **JSON(L) Preview: Open Preview** 命令或 **打开方式...（Open With...）** 即可打开预览。该命令可以强制打开 `.txt` 等其他扩展名的文件，并根据内容识别为 JSON 或 JSON Lines。没有未保存修改的本地 JSONL 和 NDJSON 文件超过配置阈值后会使用只读流式读取，因此扩展宿主和 Webview 都不会接收完整文件内容。JSON 文件、其他扩展名的文件、非本地文件 URI 和包含未保存修改的文档使用普通模式，并受普通模式大小上限约束。
 
-在任意文本编辑器中选中 JSON 或 JSON Lines 内容，右键选择 **JSON(L) 预览: 预览所选内容**，即可通过临时文档打开预览。
+在任意文本编辑器中选中 JSON 或 JSON Lines 内容，右键选择 **JSON(L) 预览: 预览所选内容**，即可通过临时文档打开预览。右上角的预览图标（以及 **Open Preview** 命令）在目标为当前文本编辑器且存在选区时，也会预览所选内容；没有选区时打开整个文件。对于只有一行非空内容、且其中能提取出唯一 JSON 对象或数组的未命名临时文档，会先将日志原文替换为该 JSON（可撤销），再在当前标签页打开预览。
 
 也可以在编辑器或终端中选中整行日志。选区预览会自动提取文本任意位置的 JSON 对象或数组，不依赖固定的日志前缀或后缀。找到一段时直接打开，找到多段时显示列表供选择。完整的 JSON / JSONL 选区保持原样；损坏的 JSON / JSONL 保留原文诊断，不会被截成内部子对象。开启注释支持后也可提取带注释的内容。自动提取超过 2 Mi 字符、128 层嵌套或 256 次解析预算时，会回退到原文预览。
 

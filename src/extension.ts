@@ -32,12 +32,34 @@ export function activate(context: vscode.ExtensionContext): void {
   const textProvider = new JsonPreviewProvider(context.extensionUri, coordinator, client, repairPreview, context.workspaceState, settings), largeProvider = new JsonlPreviewProvider(context.extensionUri, coordinator, client, repairPreview, context.workspaceState, settings);
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('jsonlPreview.text', textProvider, { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
   context.subscriptions.push(vscode.window.registerCustomEditorProvider('jsonlPreview.large', largeProvider, { webviewOptions: { retainContextWhenHidden: true }, supportsMultipleEditorsPerDocument: true }));
-  context.subscriptions.push(vscode.commands.registerCommand('jsonlPreview.openPreview', (uri?: vscode.Uri) => openPreview(uri)), vscode.commands.registerCommand('jsonlPreview.previewSelection', () => previewSelection()), vscode.commands.registerCommand('jsonlPreview.previewTerminalSelection', () => previewTerminalSelection()), vscode.commands.registerCommand('jsonlPreview.formatDocument', () => formatActive(client, coordinator)), vscode.commands.registerCommand('jsonlPreview.diagnoseRepair', () => openPreview()), vscode.commands.registerCommand('jsonlPreview.exportFiltered', async () => { const controller = textProvider.activeController() ?? largeProvider.activeController(); if (controller) await controller.exportCurrent(); else await openPreview(); }), vscode.commands.registerCommand('jsonlPreview.convertFormat', () => convertActive()), vscode.commands.registerCommand('jsonlPreview.resetViewState', async () => { await context.workspaceState.update('jsonlPreview.viewStates', undefined); await vscode.window.showInformationMessage('JSON(L) Preview view state was reset.'); }));
+  context.subscriptions.push(vscode.commands.registerCommand('jsonlPreview.openPreview', (uri?: vscode.Uri) => openPreviewCommand(uri)), vscode.commands.registerCommand('jsonlPreview.previewSelection', () => previewSelection()), vscode.commands.registerCommand('jsonlPreview.previewTerminalSelection', () => previewTerminalSelection()), vscode.commands.registerCommand('jsonlPreview.formatDocument', () => formatActive(client, coordinator)), vscode.commands.registerCommand('jsonlPreview.diagnoseRepair', () => openPreview()), vscode.commands.registerCommand('jsonlPreview.exportFiltered', async () => { const controller = textProvider.activeController() ?? largeProvider.activeController(); if (controller) await controller.exportCurrent(); else await openPreview(); }), vscode.commands.registerCommand('jsonlPreview.convertFormat', () => convertActive()), vscode.commands.registerCommand('jsonlPreview.resetViewState', async () => { await context.workspaceState.update('jsonlPreview.viewStates', undefined); await vscode.window.showInformationMessage('JSON(L) Preview view state was reset.'); }));
 }
 
 function activePreviewUri(): vscode.Uri | undefined {
   const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
   return input instanceof vscode.TabInputCustom && previewViewTypes.has(input.viewType) ? input.uri : undefined;
+}
+
+async function openPreviewCommand(input?: vscode.Uri): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (editor && (!input || input.toString() === editor.document.uri.toString())) {
+    if (!editor.selection.isEmpty) {
+      await previewSelection();
+      return;
+    }
+    if (editor.document.uri.scheme === 'untitled') {
+      const content = editor.document.getText();
+      if (content.split(/\r\n|\r|\n/).filter((line) => line.trim()).length === 1) {
+        const config = settings();
+        const candidates = selectionJsonCandidates(content, { disallowComments: !config.allowComments, allowTrailingComma: config.allowTrailingComma });
+        if (candidates.length === 1 && candidates[0] !== content) {
+          const applied = await editor.edit((edit) => edit.replace(new vscode.Range(editor.document.positionAt(0), editor.document.positionAt(content.length)), candidates[0]!));
+          if (!applied) { await vscode.window.showErrorMessage('Could not replace the log text with the extracted JSON.'); return; }
+        }
+      }
+    }
+  }
+  await openPreview(input);
 }
 
 async function targetUri(input?: vscode.Uri): Promise<vscode.Uri | undefined> { return input ?? vscode.window.activeTextEditor?.document.uri ?? activePreviewUri(); }
