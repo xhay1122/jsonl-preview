@@ -106,9 +106,27 @@ JSON 树、查询结果和 JSONL 行详情会在识别到的时间值后追加�
 
 ## Changelog
 
-### Unreleased
+### 0.1.15 — 2026-10-21
 
-- Added a command to extract JSON from clipboard text and open it in a temporary preview tab.
+- Added **Paste and Preview Clipboard JSON** to extract JSON from clipboard text and open it in a new temporary preview tab, with a picker for multiple matches.
+- Made the editor title preview action and **Open Preview** command preview the active editor selection when present.
+- Added undoable extraction of a single embedded JSON object or array from a one-line untitled log document before previewing it in the current tab.
+
+### 0.1.14 — 2026-10-08
+
+- Added fixed three-digit millisecond precision to recognized time annotations, including `.000`.
+
+### 0.1.13 — 2026-10-07
+
+- Added local-time annotations for recognized Unix timestamps and zoned ISO timestamps in JSON trees, query results, and JSONL row details, respecting the configured time zone and preserving original values for copying.
+- Improved vertical alignment of JSON tree rows and expand/collapse icons.
+
+### 0.1.12 — 2026-09-20
+
+- Added selection previews for terminal output and large files unavailable to the extension host.
+- Added extraction of embedded JSON objects and arrays from selected log text, with a picker for multiple matches.
+- Enabled copying and opening complete JSONL cell values even when their table previews are truncated.
+- Improved incremental JSONL error reporting and cleared saved sorting when its field is no longer available.
 - Allowed the open-preview command to force-open JSON or JSON Lines content stored in files such as `.txt`.
 
 ### 0.1.11 — 2026-08-26
