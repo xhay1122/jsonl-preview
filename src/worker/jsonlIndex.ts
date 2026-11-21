@@ -2,7 +2,7 @@ import { open, stat, type FileHandle } from 'node:fs/promises';
 import { TextDecoder } from 'node:util';
 import type { ByteOffset, Diagnostic, Filter, JsonlRow, LineMeta, SortSpec } from '../shared/types.js';
 import type { PreviewSettings } from '../shared/settings.js';
-import { compareForSort, matchesFilter, MISSING, valueAtPointer } from './filterEngine.js';
+import { compareSortValues, matchesFilter, MISSING, valueAtPointer } from './filterEngine.js';
 import { PreviewError } from '../shared/errors.js';
 import { parseTree, type Node } from 'jsonc-parser';
 import { compile as compileJmesPath, search as jmespathSearch } from 'jmespath';
@@ -74,9 +74,21 @@ function flatten(value: unknown, prefix = '', pointer = '', result: CollectedCel
   } else { result.cells.$ = value; result.pointers.$ = ''; result.count++; }
   return result;
 }
-function previewValue(value: unknown): unknown {
-  if (typeof value === 'string' && value.length > 4096) return `${value.slice(0, 4096)}…`;
-  return value;
+const CELL_STRING_PREVIEW_LIMIT = 1024;
+const CELL_CONTAINER_PREVIEW_LIMIT = 512;
+
+function previewCell(value: unknown): { value: unknown; truncated: boolean } {
+  if (typeof value === 'string') {
+    if (value.length > CELL_STRING_PREVIEW_LIMIT) return { value: `${value.slice(0, CELL_STRING_PREVIEW_LIMIT)}…`, truncated: true };
+    return { value, truncated: false };
+  }
+  if (value !== null && typeof value === 'object') {
+    const serialized = JSON.stringify(value);
+    if (serialized !== undefined && serialized.length > CELL_CONTAINER_PREVIEW_LIMIT) {
+      return { value: `${serialized.slice(0, CELL_CONTAINER_PREVIEW_LIMIT)}…`, truncated: true };
+    }
+  }
+  return { value, truncated: false };
 }
 
 function temporaryText(value: unknown): string {
@@ -130,7 +142,7 @@ export class JsonlIndex {
   private fileReadWindow?: { start: number; bytes: Uint8Array };
   private byteLength = 0;
   private sourcePath?: string;
-  private sourceSignature?: { size: number; mtimeMs: number; dev: number; ino: number };
+  private sourceSignature?: { size: number; mtimeNs: string; dev: string; ino: string };
   private knownErrors = 0;
   private unparsedLines = 0;
 
@@ -177,15 +189,17 @@ export class JsonlIndex {
     await this.scan(byteChunks(this.textBytes), progress);
   }
 
-  async openFile(path: string, progress?: Progress, expected?: { size: number; mtimeMs: number; dev: number; ino: number }): Promise<void> {
+  async openFile(path: string, progress?: Progress, expected?: { size: number; mtimeNs: string; dev: string; ino: string }): Promise<void> {
     this.file = await open(path, 'r');
-    const before = await this.file.stat();
-    if (expected && (before.size !== expected.size || before.mtimeMs !== expected.mtimeMs || before.dev !== expected.dev || before.ino !== expected.ino)) { await this.file.close(); delete this.file; throw new PreviewError('SOURCE_CHANGED', 'The file changed before it could be indexed; refresh the preview.'); }
-    this.byteLength = before.size; this.sourcePath = path; this.sourceSignature = { size: before.size, mtimeMs: before.mtimeMs, dev: before.dev, ino: before.ino };
+    const before = await this.file.stat({ bigint: true });
+    if (before.size > BigInt(Number.MAX_SAFE_INTEGER)) { await this.file.close(); delete this.file; throw new PreviewError('FILE_TOO_LARGE', 'The file exceeds the maximum supported byte length.'); }
+    const signature = { size: Number(before.size), mtimeNs: before.mtimeNs.toString(), dev: before.dev.toString(), ino: before.ino.toString() };
+    if (expected && (signature.size !== expected.size || signature.mtimeNs !== expected.mtimeNs || signature.dev !== expected.dev || signature.ino !== expected.ino)) { await this.file.close(); delete this.file; throw new PreviewError('SOURCE_CHANGED', 'The file changed before it could be indexed; refresh the preview.'); }
+    this.byteLength = signature.size; this.sourcePath = path; this.sourceSignature = signature;
     try {
       await this.scan(this.file.createReadStream({ autoClose: false, highWaterMark: 256 * 1024 }), progress);
-      const after = await this.file.stat();
-      if (before.size !== after.size || before.mtimeMs !== after.mtimeMs) throw new PreviewError('SOURCE_CHANGED', 'The file changed while it was being indexed.');
+      const after = await this.file.stat({ bigint: true });
+      if (before.size !== after.size || before.mtimeNs !== after.mtimeNs) throw new PreviewError('SOURCE_CHANGED', 'The file changed while it was being indexed.');
     } catch (error) { await this.file.close(); delete this.file; throw error; }
   }
 
@@ -329,8 +343,8 @@ export class JsonlIndex {
 
   private async ensureSourceUnchanged(): Promise<void> {
     if (!this.sourcePath || !this.sourceSignature) return;
-    const current = await stat(this.sourcePath);
-    if (current.size !== this.sourceSignature.size || current.mtimeMs !== this.sourceSignature.mtimeMs || current.dev !== this.sourceSignature.dev || current.ino !== this.sourceSignature.ino) throw new PreviewError('SOURCE_CHANGED', 'The file changed after it was indexed; refresh the preview.');
+    const current = await stat(this.sourcePath, { bigint: true });
+    if (Number(current.size) !== this.sourceSignature.size || current.mtimeNs.toString() !== this.sourceSignature.mtimeNs || current.dev.toString() !== this.sourceSignature.dev || current.ino.toString() !== this.sourceSignature.ino) throw new PreviewError('SOURCE_CHANGED', 'The file changed after it was indexed; refresh the preview.');
   }
 
   async applyQuery(queryId: string, filter: Filter | undefined, sort: SortSpec | undefined, cancelled: () => boolean, jmesPath = ''): Promise<{ scannedRows: number; matchedRows: number }> {
@@ -353,13 +367,13 @@ export class JsonlIndex {
       }
     }
     const matchedIndexes: number[] = [];
-    const sortableMatches: Array<{ index: number; value: unknown; exactNumbers: Map<string, string> }> | undefined = sort ? [] : undefined;
-    const exactNumbers = Boolean(sort && 'path' in sort) || filterNeedsExactNumbers(filter);
+    const sortableMatches: Array<{ index: number; key: unknown | typeof MISSING; exactNumber?: string }> | undefined = sort ? [] : undefined;
+    const exactForFilter = filterNeedsExactNumbers(filter);
     const maxQueryRows = Math.floor(Math.max(64 * 1024, this.settings.queryCacheBytes * 0.25) / Uint32Array.BYTES_PER_ELEMENT);
     let scannedRows = 0;
     for (let index = 0; index < this.lines.length; index++) {
       if (cancelled()) throw new PreviewError('CANCELLED', 'Query cancelled.');
-      const line = await this.parseLine(index, { cache: true, cells: false, exactNumbers }); scannedRows++;
+      const line = await this.parseLine(index, { cache: true, cells: false, exactNumbers: exactForFilter }); scannedRows++;
       let expressionMatch = !jmesPath;
       if (jmesPath && line.value !== undefined) {
         if (valueSearchOnly) expressionMatch = matchesJsonValue!(line.value);
@@ -372,7 +386,22 @@ export class JsonlIndex {
         }
       }
       if (expressionMatch && (!filter || (line.value !== undefined && matchesFilter(line.value, filter, line.exactNumbers)))) {
-        if (sortableMatches) sortableMatches.push({ index, value: line.value, exactNumbers: line.exactNumbers }); else matchedIndexes.push(index);
+        if (sortableMatches && sort) {
+          if ('by' in sort) {
+            sortableMatches.push({ index, key: undefined });
+          } else {
+            const key = line.value === undefined ? MISSING : valueAtPointer(line.value, sort.path);
+            let exactNumber: string | undefined;
+            if (typeof key === 'number') {
+              if (!line.exactCollected) {
+                line.exactNumbers = collectExactNumbers(parseTree(line.raw), line.raw);
+                line.exactCollected = true;
+              }
+              exactNumber = line.exactNumbers.get(sort.path);
+            }
+            sortableMatches.push({ index, key, ...(exactNumber === undefined ? {} : { exactNumber }) });
+          }
+        } else matchedIndexes.push(index);
         if ((sortableMatches?.length ?? matchedIndexes.length) > maxQueryRows) throw new PreviewError('QUERY_CACHE_LIMIT', 'The query result exceeds the configured cache budget. Narrow the query or increase queryCacheMB.');
       }
       if (index % 512 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
@@ -380,7 +409,7 @@ export class JsonlIndex {
     if (sort && sortableMatches) {
       sortableMatches.sort((a, b) => 'by' in sort
         ? (sort.direction === 'asc' ? a.index - b.index : b.index - a.index)
-        : compareForSort(a.value, b.value, sort, a.exactNumbers, b.exactNumbers) || a.index - b.index);
+        : compareSortValues(a.key, b.key, sort, a.exactNumber, b.exactNumber) || a.index - b.index);
       for (const match of sortableMatches) matchedIndexes.push(match.index);
     }
     await this.ensureSourceUnchanged();
@@ -392,20 +421,22 @@ export class JsonlIndex {
     await this.ensureSourceUnchanged();
     const queryRows = this.query(queryId).rows;
     const result: JsonlRow[] = []; let estimatedBytes = 0;
+    const maxPageBytes = Math.min(8 * 1024 * 1024, Math.max(900 * 1024, limit * 8 * 1024));
     for (let position = offset; position < Math.min(queryRows.length, offset + limit); position++) {
       const lineIndex = queryRows[position]!;
       const parsed = await this.parseLine(lineIndex);
       const meta = this.lines.get(lineIndex);
-      const rawTruncated = parsed.raw.length > 16_384;
-      const raw = rawTruncated ? `${parsed.raw.slice(0, 16_384)}…` : parsed.raw;
+      const rawTruncated = parsed.raw.length > 4096;
+      const raw = rawTruncated ? `${parsed.raw.slice(0, 256)}…` : parsed.raw;
       const truncatedCells: string[] = [];
       const cells = Object.create(null) as Record<string, unknown>;
       for (const [key, value] of Object.entries(parsed.cells)) {
-        if (typeof value === 'string' && value.length > 4096) truncatedCells.push(key);
-        cells[key] = previewValue(value);
+        const preview = previewCell(value);
+        if (preview.truncated) truncatedCells.push(key);
+        cells[key] = preview.value;
       }
       const row = { resultIndex: position + 1, physicalLine: meta.physicalLine, status: meta.status, raw, ...(rawTruncated ? { rawTruncated: true } : {}), cells, ...(truncatedCells.length ? { truncatedCells } : {}), ...(parsed.diagnostic ? { error: parsed.diagnostic } : {}) } satisfies JsonlRow;
-      const size = Buffer.byteLength(JSON.stringify(row)); if (result.length && estimatedBytes + size > 900 * 1024) break; estimatedBytes += size; result.push(row);
+      const size = Buffer.byteLength(JSON.stringify(row)); if (result.length && estimatedBytes + size > maxPageBytes) break; estimatedBytes += size; result.push(row);
     }
     return result;
   }

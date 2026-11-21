@@ -20,7 +20,15 @@ function assertSession(request: WorkerRequest): Session {
 }
 
 parentPort.on('message', async (value: unknown) => {
-  if (!validateWorkerRequest(value)) return;
+  if (!validateWorkerRequest(value)) {
+    if (value && typeof value === 'object') {
+      const candidate = value as Record<string, unknown>;
+      if (typeof candidate.requestId === 'string' && candidate.requestId.length <= 128 && typeof candidate.sessionId === 'string' && candidate.sessionId.length <= 128) {
+        respond({ requestId: candidate.requestId, sessionId: candidate.sessionId, ok: false, code: 'INVALID_REQUEST', message: 'Invalid worker request.' });
+      }
+    }
+    return;
+  }
   const request = value;
   try {
     if (request.type === 'request/cancel') {
@@ -52,7 +60,7 @@ parentPort.on('message', async (value: unknown) => {
       } else {
         const index = new JsonlIndex(request.settings);
         const progress = (scannedBytes: number, totalBytes: number, records: number) => parentPort!.postMessage({ type: 'progress', sessionId: request.sessionId, revision: request.revision, scannedBytes, totalBytes, records });
-        if (request.type === 'session/openFile') await index.openFile(request.path, progress, { size: request.expectedSize, mtimeMs: request.expectedMtimeMs, dev: request.expectedDev, ino: request.expectedIno }); else await index.openText(request.chunks.join(''), progress);
+        if (request.type === 'session/openFile') await index.openFile(request.path, progress, { size: request.expectedSize, mtimeNs: request.expectedMtimeNs, dev: request.expectedDev, ino: request.expectedIno }); else await index.openText(request.chunks.join(''), progress);
         sessions.set(request.sessionId, { revision: request.revision, kind: 'jsonl', jsonl: index, cancelled: new Set(), activeQueries: new Set() });
         respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: request.revision, data: { kind: 'jsonl', revision: request.revision, byteLength: index.sourceByteLength, parseMilliseconds: performance.now() - started, errors: index.errorCount, errorsComplete: index.errorsComplete, recordCount: index.total(), fields: index.fields, fieldPointers: index.fieldPointers } });
       }

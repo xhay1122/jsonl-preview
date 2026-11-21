@@ -3,7 +3,7 @@ import type { PreviewSettings } from '../shared/settings.js';
 
 export type WorkerRequest =
   | { type: 'session/openText'; requestId: string; sessionId: string; revision: string; kind: 'json' | 'jsonl'; chunks: string[]; settings: PreviewSettings }
-  | { type: 'session/openFile'; requestId: string; sessionId: string; revision: string; path: string; expectedSize: number; expectedMtimeMs: number; expectedDev: number; expectedIno: number; settings: PreviewSettings }
+  | { type: 'session/openFile'; requestId: string; sessionId: string; revision: string; path: string; expectedSize: number; expectedMtimeNs: string; expectedDev: string; expectedIno: string; settings: PreviewSettings }
   | { type: 'json/getChildren'; requestId: string; sessionId: string; revision: string; nodeId: string; offset: number; limit: number }
   | { type: 'json/format'; requestId: string; sessionId: string; revision: string; indent: number }
   | { type: 'json/getRepair'; requestId: string; sessionId: string; revision: string; repairId: string }
@@ -65,6 +65,9 @@ function validSort(value: unknown): value is SortSpec {
   if (sort.by === 'physicalLine') return sort.path === undefined && sort.nulls === undefined;
   return sort.by === undefined && typeof sort.path === 'string' && (sort.path === '' || sort.path.startsWith('/')) && sort.path.length <= 2048 && (sort.nulls === undefined || sort.nulls === 'first' || sort.nulls === 'last');
 }
+function validIntegerString(value: unknown): value is string {
+  return typeof value === 'string' && /^-?\d{1,32}$/.test(value);
+}
 export function validateWorkerRequest(value: unknown): value is WorkerRequest {
   if (!value || typeof value !== 'object') return false;
   const request = value as Record<string, unknown>;
@@ -78,7 +81,7 @@ export function validateWorkerRequest(value: unknown): value is WorkerRequest {
   if (request.type === 'session/openText') return (request.kind === 'json' || request.kind === 'jsonl') && typeof request.revision === 'string' && request.revision.length <= MAX_ID && validSettings(request.settings) && Array.isArray(request.chunks) && request.chunks.length <= 4096 && request.chunks.every((chunk) => typeof chunk === 'string' && chunk.length <= 256 * 1024) && request.chunks.reduce((total, chunk) => total + chunk.length, 0) <= request.settings.normalModeMaxBytes;
   if (request.type === 'jsonl/applyQuery') return typeof request.queryId === 'string' && request.queryId.length <= MAX_ID && Number.isSafeInteger(request.queryRevision) && Number(request.queryRevision) >= 0 && (request.filter === undefined || validFilter(request.filter)) && (request.sort === undefined || validSort(request.sort)) && (request.jmesPath === undefined || typeof request.jmesPath === 'string' && request.jmesPath.length <= 1024);
   if (request.type === 'json/search') return typeof request.query === 'string' && request.query.length <= 1024;
-  if (request.type === 'session/openFile') return typeof request.revision === 'string' && request.revision.length <= MAX_ID && validSettings(request.settings) && typeof request.path === 'string' && request.path.length <= 32768 && Number.isSafeInteger(request.expectedSize) && Number(request.expectedSize) >= 0 && Number.isFinite(request.expectedMtimeMs) && Number.isSafeInteger(request.expectedDev) && Number.isSafeInteger(request.expectedIno);
+  if (request.type === 'session/openFile') return typeof request.revision === 'string' && request.revision.length <= MAX_ID && validSettings(request.settings) && typeof request.path === 'string' && request.path.length <= 32768 && Number.isSafeInteger(request.expectedSize) && Number(request.expectedSize) >= 0 && validIntegerString(request.expectedMtimeNs) && validIntegerString(request.expectedDev) && validIntegerString(request.expectedIno);
   if (request.type === 'jsonl/exportToTemp') return typeof request.path === 'string' && request.path.length <= 32768 && typeof request.queryId === 'string' && request.queryId.length <= MAX_ID && Number.isSafeInteger(request.queryRevision) && Number(request.queryRevision) >= 0 && (request.format === 'json' || request.format === 'jsonl');
   if (request.type === 'jsonl/export') return typeof request.queryId === 'string' && request.queryId.length <= MAX_ID && Number.isSafeInteger(request.queryRevision) && Number(request.queryRevision) >= 0 && (request.format === 'json' || request.format === 'jsonl') && Number.isSafeInteger(request.maxBytes) && Number(request.maxBytes) > 0 && Number(request.maxBytes) <= 100 * 1024 * 1024;
   if (request.type === 'json/format') return typeof request.revision === 'string' && request.revision.length <= MAX_ID && Number.isInteger(request.indent) && Number(request.indent) >= 1 && Number(request.indent) <= 8;

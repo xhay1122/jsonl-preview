@@ -32,12 +32,14 @@ export class ByteStreamSource implements DocumentSource {
   readonly mode = 'byte-stream' as const;
   readonly capabilities = { dirtyContent: false, randomRead: true, streaming: true };
   readonly revision: string;
-  private constructor(readonly path: string, readonly size: number, readonly mtimeMs: number, readonly dev: number, readonly ino: number) {
-    this.uri = vscode.Uri.file(path).toString(); this.revision = createHash('sha256').update(`${path}:${size}:${mtimeMs}:${dev}:${ino}`).digest('hex').slice(0, 20);
+  private constructor(readonly path: string, readonly size: number, readonly mtimeNs: string, readonly dev: string, readonly ino: string) {
+    this.uri = vscode.Uri.file(path).toString(); this.revision = createHash('sha256').update(`${path}:${size}:${mtimeNs}:${dev}:${ino}`).digest('hex').slice(0, 20);
   }
   static async create(uri: vscode.Uri): Promise<ByteStreamSource> {
     if (uri.scheme !== 'file') throw new Error('Streaming mode supports local and remote-host file URIs only.');
-    const info = await stat(uri.fsPath); return new ByteStreamSource(uri.fsPath, info.size, info.mtimeMs, info.dev, info.ino);
+    const info = await stat(uri.fsPath, { bigint: true });
+    if (info.size > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('The file exceeds the maximum supported byte length.');
+    return new ByteStreamSource(uri.fsPath, Number(info.size), info.mtimeNs.toString(), info.dev.toString(), info.ino.toString());
   }
   async stat(): Promise<{ byteLength: number }> { return { byteLength: this.size }; }
   async readRange(startByte: number, length: number): Promise<Uint8Array> {

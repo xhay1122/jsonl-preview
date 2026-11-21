@@ -85,9 +85,8 @@ function rank(value: unknown | typeof MISSING): number {
   return 3;
 }
 
-export function compareForSort(left: unknown, right: unknown, spec: SortSpec, leftExact?: ReadonlyMap<string, string>, rightExact?: ReadonlyMap<string, string>): number {
+export function compareSortValues(a: unknown | typeof MISSING, b: unknown | typeof MISSING, spec: SortSpec, leftExact?: string, rightExact?: string): number {
   if ('by' in spec) return 0;
-  const a = valueAtPointer(left, spec.path), b = valueAtPointer(right, spec.path);
   const nullishA = a === null || a === MISSING, nullishB = b === null || b === MISSING;
   if (nullishA || nullishB) {
     if (nullishA && nullishB) return rank(a) - rank(b);
@@ -96,10 +95,15 @@ export function compareForSort(left: unknown, right: unknown, spec: SortSpec, le
   const rankDifference = rank(a) - rank(b);
   let result = rankDifference;
   if (rankDifference === 0) {
-    if (typeof a === 'number' && typeof b === 'number') result = compareDecimals(leftExact?.get(spec.path) ?? String(a), rightExact?.get(spec.path) ?? String(b));
+    if (typeof a === 'number' && typeof b === 'number') result = compareDecimals(leftExact ?? String(a), rightExact ?? String(b));
     else if (typeof a === 'string' && typeof b === 'string') result = a === b ? 0 : a < b ? -1 : 1;
     else if (typeof a === 'boolean' && typeof b === 'boolean') result = Number(a) - Number(b);
     else result = JSON.stringify(a).localeCompare(JSON.stringify(b));
   }
   return spec.direction === 'desc' ? -result : result;
+}
+
+export function compareForSort(left: unknown, right: unknown, spec: SortSpec, leftExact?: ReadonlyMap<string, string>, rightExact?: ReadonlyMap<string, string>): number {
+  if ('by' in spec) return 0;
+  return compareSortValues(valueAtPointer(left, spec.path), valueAtPointer(right, spec.path), spec, leftExact?.get(spec.path), rightExact?.get(spec.path));
 }

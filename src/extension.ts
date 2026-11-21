@@ -40,6 +40,10 @@ function activePreviewUri(): vscode.Uri | undefined {
   const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
   return input instanceof vscode.TabInputCustom && previewViewTypes.has(input.viewType) ? input.uri : undefined;
 }
+function activeTextTabUri(): vscode.Uri | undefined {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  return input instanceof vscode.TabInputText ? input.uri : undefined;
+}
 
 async function openPreviewCommand(input?: vscode.Uri): Promise<void> {
   const editor = vscode.window.activeTextEditor;
@@ -63,7 +67,7 @@ async function openPreviewCommand(input?: vscode.Uri): Promise<void> {
   await openPreview(input);
 }
 
-async function targetUri(input?: vscode.Uri): Promise<vscode.Uri | undefined> { return input ?? vscode.window.activeTextEditor?.document.uri ?? activePreviewUri(); }
+async function targetUri(input?: vscode.Uri): Promise<vscode.Uri | undefined> { return input ?? vscode.window.activeTextEditor?.document.uri ?? activeTextTabUri() ?? activePreviewUri(); }
 async function openPreview(input?: vscode.Uri): Promise<void> {
   const uri = await targetUri(input); if (!uri) { await vscode.window.showInformationMessage('Open a file containing JSON or JSON Lines first.'); return; }
   const previewUri = activePreviewUri();
@@ -71,7 +75,7 @@ async function openPreview(input?: vscode.Uri): Promise<void> {
     await vscode.commands.executeCommand('reopenActiveEditorWith', 'default');
     return;
   }
-  const viewColumn = vscode.window.activeTextEditor?.document.uri.toString() === uri.toString() ? vscode.window.activeTextEditor.viewColumn : undefined;
+  const reopenActive = vscode.window.activeTextEditor?.document.uri.toString() === uri.toString() || activeTextTabUri()?.toString() === uri.toString();
   const extension = uri.path.toLowerCase().split('.').at(-1);
   const isKnownJsonl = extension === 'jsonl' || extension === 'ndjson';
   let viewType = 'jsonlPreview.text';
@@ -84,7 +88,7 @@ async function openPreview(input?: vscode.Uri): Promise<void> {
     if (isKnownJsonl && size > threshold && !openDocument?.isDirty) viewType = 'jsonlPreview.large';
     else if (size > normalLimit) { await vscode.window.showErrorMessage(isKnownJsonl ? 'The file exceeds the normal-mode limit and cannot use streaming while it has unsaved changes.' : 'The file exceeds the normal-mode limit. Only files named .jsonl or .ndjson can use streaming mode.'); return; }
   }
-  if (viewColumn !== undefined) await vscode.commands.executeCommand('reopenActiveEditorWith', viewType);
+  if (reopenActive) await vscode.commands.executeCommand('reopenActiveEditorWith', viewType);
   else await vscode.commands.executeCommand('vscode.openWith', uri, viewType, { preview: false });
 }
 

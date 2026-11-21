@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Worker } from 'node:worker_threads';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { defaultSettings } from '../../src/shared/settings.js';
 import type { WorkerRequest, WorkerResponse } from '../../src/worker/protocol.js';
 
@@ -49,5 +51,29 @@ describe('worker boundary', () => {
         { resultIndex: 1005, physicalLine: 1005, cells: { id: 1005 } }
       ]
     });
+  });
+
+  it('opens a streamed file with bigint stat signature and responds to invalid requests instead of hanging', async () => {
+    worker = new Worker(resolve('dist/worker.js'));
+    const directory = await mkdtemp(join(tmpdir(), 'jsonl-preview-worker-file-'));
+    const path = join(directory, 'streamed.jsonl');
+    try {
+      await writeFile(path, '{"id":1}\n{"id":2}\n');
+      const info = await stat(path, { bigint: true });
+      const opened = await request({
+        type: 'session/openFile', sessionId: 'streamed', revision: 'rev-1', path,
+        expectedSize: Number(info.size), expectedMtimeNs: info.mtimeNs.toString(), expectedDev: info.dev.toString(), expectedIno: info.ino.toString(),
+        settings: defaultSettings
+      });
+      expect(opened.ok && opened.data).toMatchObject({ kind: 'jsonl', recordCount: 2 });
+
+      const invalid = await request({
+        type: 'session/openFile', sessionId: 'streamed', revision: 'rev-1', path,
+        expectedSize: -1, expectedMtimeNs: 'bad', expectedDev: '0', expectedIno: '0', settings: defaultSettings
+      });
+      expect(invalid).toMatchObject({ ok: false, code: 'INVALID_REQUEST' });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });

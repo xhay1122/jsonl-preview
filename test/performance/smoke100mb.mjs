@@ -24,9 +24,9 @@ const request = (message) => new Promise((resolveResponse, reject) => {
   worker.on('message', onMessage); worker.once('error', onError); worker.postMessage({ ...message, requestId });
 });
 const settings = { indent: 2, allowComments: false, allowTrailingComma: false, maxAutoExpandDepth: 10, pageSize: 100, schemaSampleSize: 1000, ignoreEmptyLines: true, maxLineBytes: 5 * 1024 * 1024, maxSortableRows: 1_000_000, queryCacheBytes: 128 * 1024 * 1024, normalModeMaxBytes: 100 * 1024 * 1024, timezone: 'system' };
-const sourceInfo = await stat(path);
+const sourceInfo = await stat(path, { bigint: true });
 const started = performance.now();
-const response = await request({ type: 'session/openFile', sessionId: '100mb-smoke', revision: `size-${bytes}`, path, expectedSize: sourceInfo.size, expectedMtimeMs: sourceInfo.mtimeMs, expectedDev: sourceInfo.dev, expectedIno: sourceInfo.ino, settings });
+const response = await request({ type: 'session/openFile', sessionId: '100mb-smoke', revision: `size-${bytes}`, path, expectedSize: Number(sourceInfo.size), expectedMtimeNs: sourceInfo.mtimeNs.toString(), expectedDev: sourceInfo.dev.toString(), expectedIno: sourceInfo.ino.toString(), settings });
 const indexMilliseconds = performance.now() - started;
 const queryStarted = performance.now();
 const query = await request({ type: 'jsonl/applyQuery', sessionId: '100mb-smoke', revision: `size-${bytes}`, queryId: 'errors', queryRevision: 1, filter: { op: 'compare', path: '/level', cmp: 'eq', value: { kind: 'string', value: 'error' } } });

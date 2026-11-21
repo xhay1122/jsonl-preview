@@ -91,16 +91,20 @@ describe('JSONL index', () => {
   });
   it('keeps page payloads bounded and retrieves a complete large record on demand', async () => {
     const content = 'x'.repeat(20_000);
-    const raw = JSON.stringify({ content });
+    const messages = Array.from({ length: 40 }, (_, i) => ({ role: 'user', text: `msg-${i}-${'y'.repeat(100)}` }));
+    const raw = JSON.stringify({ content, messages });
     const index = new JsonlIndex(defaultSettings);
     await index.openText(raw);
     const row = (await index.page('default', 0, 1))[0]!;
     expect(row.rawTruncated).toBe(true);
-    expect(row.truncatedCells).toEqual(['content']);
+    expect(row.truncatedCells).toEqual(['content', 'messages']);
     expect(row.raw.length).toBeLessThan(raw.length);
+    expect(typeof row.cells.messages).toBe('string');
+    expect((row.cells.messages as string).length).toBeLessThan(JSON.stringify(messages).length);
     expect(await index.recordText(1)).toBe(raw);
     expect(await index.cellText(1, 'content')).toBe(JSON.stringify(content, null, 2));
     expect(await index.cellValueText(1, '/content')).toBe(content);
+    expect(await index.cellValueText(1, '/messages')).toBe(JSON.stringify(messages));
     await index.close();
   });
   it('keeps display labels distinct from RFC 6901 pointers for dotted keys', async () => {

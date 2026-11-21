@@ -23,6 +23,7 @@ vi.mock('vscode', () => ({
   Uri: { joinPath: () => ({ fsPath: '/extension/dist/worker.js' }) },
   Range: class Range { constructor(readonly start: unknown, readonly end: unknown) {} },
   TabInputCustom: class TabInputCustom {},
+  TabInputText: class TabInputText {},
   commands: {
     registerCommand: (name: string, handler: (...args: unknown[]) => unknown) => { state.commands.set(name, handler); },
     executeCommand: state.executeCommand
@@ -42,7 +43,7 @@ vi.mock('../../src/editors/jsonPreviewProvider.js', () => ({ JsonPreviewProvider
 vi.mock('../../src/editors/jsonlPreviewProvider.js', () => ({ JsonlPreviewProvider: class {} }));
 vi.mock('../../src/editors/previewController.js', () => ({ RepairPreviewProvider: class {} }));
 
-import { TabInputCustom } from 'vscode';
+import { TabInputCustom, TabInputText } from 'vscode';
 import { activate } from '../../src/extension.js';
 
 function uri(path: string, scheme = 'file'): vscode.Uri {
@@ -231,5 +232,17 @@ describe('open preview command', () => {
     expect(state.openTextDocument).not.toHaveBeenCalled();
     expect(state.executeCommand).not.toHaveBeenCalled();
     expect(state.writeClipboard).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, uri('/large.jsonl')])('opens large JSONL files in streaming mode even when VS Code does not expose activeTextEditor (input=%s)', async (input) => {
+    const largeUri = uri('/large.jsonl');
+    state.stat.mockResolvedValue({ size: 88 * 1024 * 1024 });
+    state.window.tabGroups.activeTabGroup.activeTab = {
+      input: Object.assign(Object.create(TabInputText.prototype), { uri: largeUri })
+    };
+
+    await state.commands.get('jsonlPreview.openPreview')!(input);
+
+    expect(state.executeCommand).toHaveBeenCalledExactlyOnceWith('reopenActiveEditorWith', 'jsonlPreview.large');
   });
 });

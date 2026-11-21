@@ -40,11 +40,11 @@ export class DocumentCoordinator implements vscode.Disposable {
       const path = 'path' in source && typeof source.path === 'string' ? source.path : undefined;
       if (!path) throw new Error('This streaming source cannot be opened directly by the worker.');
       const expectedSize = 'size' in source && typeof source.size === 'number' ? source.size : undefined;
-      const expectedMtimeMs = 'mtimeMs' in source && typeof source.mtimeMs === 'number' ? source.mtimeMs : undefined;
-      const expectedDev = 'dev' in source && typeof source.dev === 'number' ? source.dev : undefined;
-      const expectedIno = 'ino' in source && typeof source.ino === 'number' ? source.ino : undefined;
-      if (expectedSize === undefined || expectedMtimeMs === undefined || expectedDev === undefined || expectedIno === undefined) throw new Error('The streaming source does not provide a stable file signature.');
-      data = await this.client.request({ type: 'session/openFile', sessionId: id, revision: source.revision, path, expectedSize, expectedMtimeMs, expectedDev, expectedIno, settings }, 120_000);
+      const expectedMtimeNs = 'mtimeNs' in source && typeof source.mtimeNs === 'string' ? source.mtimeNs : undefined;
+      const expectedDev = 'dev' in source && typeof source.dev === 'string' ? source.dev : undefined;
+      const expectedIno = 'ino' in source && typeof source.ino === 'string' ? source.ino : undefined;
+      if (expectedSize === undefined || expectedMtimeNs === undefined || expectedDev === undefined || expectedIno === undefined) throw new Error('The streaming source does not provide a stable file signature.');
+      data = await this.client.request({ type: 'session/openFile', sessionId: id, revision: source.revision, path, expectedSize, expectedMtimeNs, expectedDev, expectedIno, settings }, 120_000);
     } else {
       const text = await source.readText!();
       const chunks: string[] = [];

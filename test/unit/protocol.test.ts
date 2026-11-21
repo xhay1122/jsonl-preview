@@ -24,4 +24,13 @@ describe('worker protocol validation', () => {
     expect(validateWorkerRequest({ ...base, sort: { by: 'physicalLine', path: '/id', direction: 'desc' } })).toBe(false);
     expect(validateWorkerRequest({ ...base, sort: { path: '', direction: 'asc' } })).toBe(true);
   });
+  it('accepts 64-bit integer file signatures for streaming sessions', () => {
+    const base = {
+      type: 'session/openFile', requestId: '1', sessionId: 's', revision: 'r', path: 'C:\\logs\\large.jsonl',
+      expectedSize: 88_128_335, expectedMtimeNs: '315504000000000000', expectedDev: '3229201964', expectedIno: '21392098230293195', settings: defaultSettings
+    };
+    expect(validateWorkerRequest(base)).toBe(true);
+    expect(validateWorkerRequest({ ...base, expectedIno: 'not-an-integer' })).toBe(false);
+    expect(validateWorkerRequest({ ...base, expectedIno: 21392098230293196 })).toBe(false);
+  });
 });
