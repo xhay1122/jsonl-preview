@@ -35,19 +35,21 @@ describe('React webview app', () => {
     render(<App />);
     expect(bridge.messages).toContainEqual({ type: 'ready' });
 
-    window.dispatchEvent(new MessageEvent('message', { data: {
-      type: 'init',
-      summary: { kind: 'jsonl', revision: 'v1', byteLength: 2048, parseMilliseconds: 4, errors: 0, recordCount: 2, fields: ['name'] },
-      uiState: {}
-    } }));
+    await act(() => {
+      window.dispatchEvent(new MessageEvent('message', { data: {
+        type: 'init',
+        summary: { kind: 'jsonl', revision: 'v1', byteLength: 2048, parseMilliseconds: 4, errors: 0, recordCount: 2, fields: ['name'] },
+        uiState: {}
+      } }));
+    });
 
-    expect(await screen.findByText('JSONL Preview')).toBeTruthy();
+    expect(screen.getByText('JSONL Preview')).toBeTruthy();
     const exportButton = screen.getByRole('button', { name: 'Export' });
     expect(exportButton.textContent?.trim()).toBe('');
     expect(exportButton.querySelector('.t-icon-file-export')).toBeTruthy();
     expect(exportButton.getAttribute('title')).toBeNull();
     fireEvent.mouseEnter(exportButton);
-    expect(screen.getByRole('tooltip').textContent).toBe('Export');
+    expect((await screen.findByRole('tooltip')).textContent).toBe('Export');
     fireEvent.mouseLeave(exportButton);
     const input = screen.getByRole('searchbox');
     expect(input.getAttribute('placeholder')).toBe("Filter rows by value or enter JMESPath, e.g. level == 'error'");
