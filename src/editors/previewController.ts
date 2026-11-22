@@ -4,6 +4,7 @@ import type { WorkerClient } from '../document/workerClient.js';
 import type { DocumentSource } from '../document/documentSource.js';
 import type { Filter, JsonNodeView, RepairCandidate, SortSpec } from '../shared/types.js';
 import type { PreviewSettings } from '../shared/settings.js';
+import { isJsonSearchMode, type JsonSearchPreferences } from '../shared/jsonSearch.js';
 import { messageOf, PreviewError } from '../shared/errors.js';
 import { webviewHtml } from './webviewHtml.js';
 import { createHash, randomUUID } from 'node:crypto';
@@ -26,10 +27,11 @@ function validMessage(value: unknown): value is WebviewMessage {
   if (!value || typeof value !== 'object') return false;
   try { if (JSON.stringify(value).length > 64 * 1024) return false; } catch { return false; }
   const message = value as Record<string, unknown>;
-  return typeof message.type === 'string' && ['ready', 'children', 'page', 'record', 'query', 'jsonSearch', 'revealLine', 'copy', 'openTemp', 'openCurrent', 'openSource', 'format', 'repair', 'export', 'persist'].includes(message.type);
+  return typeof message.type === 'string' && ['ready', 'children', 'page', 'record', 'query', 'jsonSearch', 'setSearchMode', 'revealLine', 'copy', 'openTemp', 'openCurrent', 'openSource', 'format', 'repair', 'export', 'persist'].includes(message.type);
 }
 
 export class PreviewController implements vscode.Disposable {
+  private static readonly controllers = new Set<PreviewController>();
   private session?: SessionHandle;
   private webviewReady = false;
   private disposed = false;
@@ -55,7 +57,13 @@ export class PreviewController implements vscode.Disposable {
   ) {
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'dist')] };
     panel.webview.html = webviewHtml(panel.webview, extensionUri);
+    PreviewController.controllers.add(this);
     this.disposables.push(panel.webview.onDidReceiveMessage((message) => void this.onMessage(message)), panel.onDidDispose(() => this.dispose()));
+    this.disposables.push(vscode.workspace.onDidChangeConfiguration((event) => {
+      if (this.webviewReady && event.affectsConfiguration('jsonlPreview.search.defaultMode', this.resource)) {
+        void this.postSearchPreferences();
+      }
+    }));
     this.disposables.push(client.onProgress((progress) => { if (progress.sessionId === this.session?.id) void panel.webview.postMessage(progress); }));
     void this.open();
   }
@@ -123,7 +131,7 @@ export class PreviewController implements vscode.Disposable {
         const filter = message.filter as Filter | undefined, sort = message.sort as SortSpec | undefined, jmesPath = typeof message.jmesPath === 'string' ? message.jmesPath.slice(0, 1024) : undefined;
         if (this.activeQueryId) void this.client.cancel(session.id, this.activeQueryId).catch(() => undefined);
         const queryId = `${this.controllerId}:${queryRevision}`;
-        const pending = this.client.requestWithId({ type: 'jsonl/applyQuery', sessionId: session.id, revision: session.revision, queryId, queryRevision, ...(filter ? { filter } : {}), ...(sort ? { sort } : {}), ...(jmesPath ? { jmesPath } : {}) }, 120_000); this.activeQueryId = pending.requestId;
+        const pending = this.client.requestWithId({ type: 'jsonl/applyQuery', sessionId: session.id, revision: session.revision, queryId, queryRevision, ...(filter ? { filter } : {}), ...(sort ? { sort } : {}), ...(jmesPath ? { jmesPath, time: this.searchTime(message.systemTimezone) } : {}) }, 120_000); this.activeQueryId = pending.requestId;
         try {
           const data = await pending.promise;
           if (this.session === session && this.activeQueryId === pending.requestId && !this.disposed) { this.currentQueryId = queryId; this.currentQueryIdRevision = queryRevision; await this.panel.webview.postMessage({ type: 'page', ...data, offset: 0, queryRevision }); }
@@ -133,9 +141,16 @@ export class PreviewController implements vscode.Disposable {
       } else if (message.type === 'jsonSearch') {
         const query = typeof message.query === 'string' ? message.query.slice(0, 1024) : '';
         const searchRevision = Number.isInteger(message.searchRevision) ? Number(message.searchRevision) : 0;
-        const data = await this.client.request({ type: 'json/search', sessionId: session.id, revision: session.revision, query });
+        const mode = isJsonSearchMode(message.mode) ? message.mode : 'filter';
+        const matchIndex = Number.isSafeInteger(message.matchIndex) && Number(message.matchIndex) >= 0 ? Number(message.matchIndex) : 0;
+        const data = await this.client.request({ type: 'json/search', sessionId: session.id, revision: session.revision, query, mode, matchIndex, time: this.searchTime(message.systemTimezone) });
         if (this.session !== session || this.disposed) return;
         await this.panel.webview.postMessage({ type: 'search', query, searchRevision, ...data });
+      } else if (message.type === 'setSearchMode' && isJsonSearchMode(message.mode)) {
+        await this.workspaceState.update('jsonlPreview.lastSearchMode', message.mode);
+        for (const controller of PreviewController.controllers) {
+          if (controller.workspaceState === this.workspaceState && controller.webviewReady) void controller.postSearchPreferences();
+        }
       }
       else if (message.type === 'revealLine') await this.revealLine(Number(message.line));
       else if (message.type === 'copy') await this.copy(message, session);
@@ -150,6 +165,10 @@ export class PreviewController implements vscode.Disposable {
       if (this.session !== session || this.disposed) return;
       if (error instanceof PreviewError && error.code === 'CANCELLED') return;
       if ((error instanceof PreviewError && error.code === 'SESSION_NOT_FOUND') || /worker exited|Worker stopped/i.test(messageOf(error))) { try { await this.recover(); return; } catch (recoveryError) { await this.error(recoveryError); return; } }
+      if (message.type === 'jsonSearch') {
+        await this.panel.webview.postMessage({ type: 'searchError', searchRevision: message.searchRevision, message: messageOf(error) });
+        return;
+      }
       await this.error(error);
     }
   }
@@ -272,9 +291,23 @@ export class PreviewController implements vscode.Disposable {
   }
   async exportCurrent(): Promise<void> { if (this.kind !== 'jsonl') { await vscode.window.showInformationMessage('Export is available for JSONL previews.'); return; } await this.export(this.currentQueryRevision); }
   private async error(error: unknown): Promise<void> { await this.panel.webview.postMessage({ type: 'error', message: messageOf(error) }); }
+  private searchTime(systemTimezone: unknown): { locale: string; timezone: string } {
+    const configured = this.settings.timezone || 'system';
+    const timezone = configured === 'system' && typeof systemTimezone === 'string' && systemTimezone.length <= 128
+      ? systemTimezone : configured;
+    return { locale: vscode.env.language, timezone };
+  }
   private async postInit(): Promise<void> {
     if (!this.session) return;
-    await this.panel.webview.postMessage({ type: 'init', summary: { ...this.session.summary, timezone: this.settings.timezone, maxAutoExpandDepth: this.settings.maxAutoExpandDepth, pageSize: this.settings.pageSize, locale: vscode.env.language }, uiState: this.savedState() });
+    await this.panel.webview.postMessage({ type: 'init', summary: { ...this.session.summary, timezone: this.settings.timezone, maxAutoExpandDepth: this.settings.maxAutoExpandDepth, pageSize: this.settings.pageSize, locale: vscode.env.language }, uiState: this.savedState(), searchPreferences: this.searchPreferences() });
+  }
+  private searchPreferences(): JsonSearchPreferences {
+    const mode = vscode.workspace.getConfiguration('jsonlPreview', this.resource).get<unknown>('search.defaultMode');
+    const last = this.workspaceState.get<unknown>('jsonlPreview.lastSearchMode');
+    return { defaultMode: isJsonSearchMode(mode) ? mode : 'remember', lastMode: isJsonSearchMode(last) ? last : 'filter' };
+  }
+  private async postSearchPreferences(): Promise<void> {
+    await this.panel.webview.postMessage({ type: 'searchPreferences', ...this.searchPreferences() });
   }
   private async recover(): Promise<void> {
     await this.replaceSession(this.source, this.kind, this.settings);
@@ -286,7 +319,7 @@ export class PreviewController implements vscode.Disposable {
     const next = { ...all, [this.stateKey()]: safe }; const entries = Object.entries(next); await this.workspaceState.update('jsonlPreview.viewStates', Object.fromEntries(entries.slice(-100)));
   }
   isActive(): boolean { return !this.disposed && this.panel.active; }
-  dispose(): void { if (this.disposed) return; this.disposed = true; this.refreshGeneration++; this.disposables.forEach((item) => item.dispose()); if (this.activeQueryId && this.session) void this.client.cancel(this.session.id, this.activeQueryId).catch(() => undefined); if (this.session) void this.coordinator.release(this.session); }
+  dispose(): void { if (this.disposed) return; this.disposed = true; PreviewController.controllers.delete(this); this.refreshGeneration++; this.disposables.forEach((item) => item.dispose()); if (this.activeQueryId && this.session) void this.client.cancel(this.session.id, this.activeQueryId).catch(() => undefined); if (this.session) void this.coordinator.release(this.session); }
 }
 
 function applyTextEdits(text: string, edits: Array<{ offset: number; length: number; text: string }>): string {

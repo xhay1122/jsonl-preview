@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatTimestamp, parseTimestamp } from '../../src/webview/dateTime.js';
+import { formatTimestamp, parseTimestamp } from '../../src/shared/dateTime.js';
 
 describe('timestamp recognition', () => {
   it.each([

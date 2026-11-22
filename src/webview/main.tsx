@@ -3,6 +3,8 @@ import 'tdesign-react/es/style/index.css';
 import 'tdesign-react/es/button/style/index.css';
 import 'tdesign-react/es/input/style/index.css';
 import 'tdesign-react/es/drawer/style/index.css';
+import 'tdesign-react/es/popup/style/index.css';
+import 'tdesign-react/es/tooltip/style/index.css';
 import { App } from './app.js';
 import './styles.css';
 

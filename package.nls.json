@@ -1,4 +1,8 @@
 {
+  "configuration.search.defaultMode.description": "Initial search mode for JSON previews and JSONL record details.",
+  "configuration.search.defaultMode.filter": "Show matching values only.",
+  "configuration.search.defaultMode.reveal": "Reveal and highlight matches in the original tree.",
+  "configuration.search.defaultMode.remember": "Use the last mode selected in this workspace. Starts with Results only.",
   "editor.text": "JSON(L) Preview",
   "editor.large": "JSONL Large File Preview",
   "command.open": "JSON(L) Preview: Open Preview",

@@ -1,11 +1,12 @@
-interface TimeDisplayOptions { locale?: string; timezone?: string }
+export interface TimeDisplayOptions { locale?: string; timezone?: string }
 const formatters = new Map<string, { formatter: Intl.DateTimeFormat; timezone: string }>();
 
 /** Only infer conventional Unix units; shorter values require a field unit. */
 export function parseTimestamp(value: unknown, field?: string): number | undefined {
-  const tokens = (field ?? '').replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[_\-.\s/]+/);
-  const temporalField = tokens.some((token) => ['date', 'time', 'timestamp', 'datetime', 'at'].includes(token));
-  if (temporalField && (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value)))) {
+  if (typeof value === 'number' || (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value))) {
+    if (!field) return undefined;
+    const tokens = field.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase().split(/[_\-.\s/]+/);
+    if (!tokens.some((token) => ['date', 'time', 'timestamp', 'datetime', 'at'].includes(token))) return undefined;
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return undefined;
     const unit = tokens.at(-1);
@@ -52,4 +53,9 @@ export function formatTimestamp(milliseconds: number, options: TimeDisplayOption
     }
     return { text: cached.formatter.format(new Date(milliseconds)), timezone: cached.timezone };
   } catch { return undefined; }
+}
+
+export function timestampLabel(value: unknown, field: string | undefined, options: TimeDisplayOptions): { text: string; timezone: string } | undefined {
+  const milliseconds = parseTimestamp(value, field);
+  return milliseconds === undefined ? undefined : formatTimestamp(milliseconds, options);
 }

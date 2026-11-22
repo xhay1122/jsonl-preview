@@ -24,6 +24,8 @@ For large files unavailable to the extension host, selection preview uses the ed
 
 Enter a plain value to search JSON scalar values; in JSONL previews this filters the table to matching records. JMESPath expressions such as `users[?active].name` remain available for projections and structured record filtering. Right-click a node to copy data or a directly reusable JMESPath-compatible JSONPath; JSONL row details support the same actions.
 
+Use the mode icon before **View Source** in JSON previews or before **Copy Row** in JSONL record details to switch between **Results only** and **Reveal in tree**. Search accepts partial numbers, timestamps, and formatted dates. Reveal mode highlights matches in the original tree. Use Enter or Shift+Enter to move between matches. The same input accepts JMESPath. The `jsonlPreview.search.defaultMode` setting accepts `filter`, `reveal`, and `remember`. The default, `remember`, reuses the workspace's last choice.
+
 String scalar values provide inline actions to view their full content, copy them, or open them in a temporary tab. Hold `Alt`/`Option` while opening content to reuse the current tab instead. The full-content viewer supports `Ctrl`/`Cmd`+`F` search and context-menu actions for selected text.
 
 JSON trees, query results, and JSONL row details append a gray local-time annotation with three millisecond digits to recognized time values. Fields such as `date`, `timestamp`, `created_at`, and `createdAt` support Unix seconds or milliseconds, including numeric strings; ISO timestamps with an explicit zone are also recognized. The original value remains visible and is used when copying. Annotations use `jsonlPreview.timezone` (the system time zone by default); date-time strings without an explicit zone remain unchanged.
@@ -70,6 +72,8 @@ Keep `largeFileThresholdMB` at or below `normalModeMaxFileMB`. Otherwise, a JSON
 对于未同步到扩展的大文件，选区预览会通过编辑器的复制命令读取所选内容，无需将整个文件加载到预览中。大文件和终端选区预览都会临时使用系统剪贴板，且只能恢复原来的纯文本；原有图片、富文本及其他非文本格式会丢失。请先保存需要保留的剪贴板内容。读取期间重复触发这两种预览会被忽略。
 
 输入普通文本可以搜索 JSON 中的标量值；在 JSONL 预览中，则会筛选出匹配的记录。也可以使用 `users[?active].name` 等 JMESPath 表达式进行投影和结构化记录筛选。右键单击节点，可以复制数据或可直接复用、兼容 JMESPath 的 JSONPath；JSONL 行详情也支持相同操作。
+
+独立 JSON 预览的模式图标位于**查看源码**前，JSONL 行详情的模式图标位于**复制整行**前。点击可切换**仅看结果**和**展开定位**。输入数字、时间戳或格式化时间的片段即可搜索。展开定位会在原树中高亮匹配，按 Enter 或 Shift+Enter 可以跳到下一处或上一处。同一个搜索框也接受 JMESPath。`jsonlPreview.search.defaultMode` 可设为 `filter`、`reveal` 或 `remember`，默认记住当前工作区上次的选择。
 
 字符串标量值提供行内操作，可查看完整内容、复制，或在临时标签页中打开。打开内容时按住 `Alt`/`Option`，则会改为复用当前标签页。完整内容查看器支持使用 `Ctrl`/`Cmd`+`F` 搜索，也支持通过右键菜单操作选中的文本。
 

@@ -1,10 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const vscode = vi.hoisted(() => ({
-  writeText: vi.fn(async (_text: string) => undefined)
+  writeText: vi.fn(async (_text: string) => undefined),
+  getSetting: vi.fn<(_key: string) => unknown>()
 }));
 
-vi.mock('vscode', () => ({ env: { clipboard: { writeText: vscode.writeText } } }));
+vi.mock('vscode', () => ({
+  env: { language: 'en', clipboard: { writeText: vscode.writeText } },
+  workspace: { getConfiguration: () => ({ get: vscode.getSetting }) }
+}));
 
 import { PreviewController } from '../../src/editors/previewController.js';
 import { PreviewError } from '../../src/shared/errors.js';
@@ -27,7 +31,39 @@ function controllerWith(client: Record<string, unknown>): PreviewController & Re
 }
 
 describe('PreviewController', () => {
-  beforeEach(() => vscode.writeText.mockClear());
+  beforeEach(() => { vscode.writeText.mockClear(); vscode.getSetting.mockReset(); });
+
+  it('remembers a manual choice for newly opened previews and sends the configured initial mode', async () => {
+    const store = new Map<string, unknown>();
+    const workspaceState = {
+      get: (key: string, fallback?: unknown) => store.get(key) ?? fallback,
+      update: async (key: string, value: unknown) => { store.set(key, value); }
+    };
+    const open = (file: string) => {
+      const controller = controllerWith({});
+      Object.assign(controller, { workspaceState, resource: { toString: () => file } });
+      return controller as unknown as {
+        onMessage(message: unknown): Promise<void>;
+        panel: { webview: { postMessage: ReturnType<typeof vi.fn> } };
+      };
+    };
+    const first = open('file:///first.json');
+    await first.onMessage({ type: 'ready' });
+    expect(first.panel.webview.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'init', searchPreferences: { defaultMode: 'remember', lastMode: 'filter' }
+    }));
+    await first.onMessage({ type: 'setSearchMode', mode: 'reveal' });
+    const second = open('file:///second.jsonl');
+    await second.onMessage({ type: 'ready' });
+    expect(second.panel.webview.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'init', searchPreferences: { defaultMode: 'remember', lastMode: 'reveal' }
+    }));
+    vscode.getSetting.mockReturnValue('filter');
+    await second.onMessage({ type: 'ready' });
+    expect(second.panel.webview.postMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      type: 'init', searchPreferences: { defaultMode: 'filter', lastMode: 'reveal' }
+    }));
+  });
 
   it('fetches complete JSONL content before copying rows and cells', async () => {
     const request = vi.fn(async (message: Record<string, unknown>) => ({ content: message.type === 'jsonl/getCellValue' ? 'complete cell' : 'complete row' }));

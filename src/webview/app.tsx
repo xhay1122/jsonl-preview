@@ -5,8 +5,6 @@ import Input from 'tdesign-react/es/input';
 import Table, { type PrimaryTableCol, type TableSort } from 'tdesign-react/es/table';
 import ChevronRightIcon from 'tdesign-icons-react/esm/components/chevron-right';
 import ChevronDownIcon from 'tdesign-icons-react/esm/components/chevron-down';
-import ChevronUpIcon from 'tdesign-icons-react/esm/components/chevron-up';
-import CloseIcon from 'tdesign-icons-react/esm/components/close';
 import CodeIcon from 'tdesign-icons-react/esm/components/code';
 import CopyIcon from 'tdesign-icons-react/esm/components/copy';
 import EnterIcon from 'tdesign-icons-react/esm/components/enter';
@@ -18,12 +16,16 @@ import BrowseIcon from 'tdesign-icons-react/esm/components/browse';
 import TabIcon from 'tdesign-icons-react/esm/components/tab';
 import ToolsIcon from 'tdesign-icons-react/esm/components/tools';
 import { BrandIcon } from './brandIcon';
-import type { JsonNodeView, JsonlRow } from '../shared/types.js';
-import { createInitialState, reducer, type AppState, type TreeState } from './state.js';
+import type { JsonNodeView, JsonlRow, JsonSearchTarget } from '../shared/types.js';
+import { checkQueryResultSize, literalMatches, matchGroupAt, queryProjection, scalarMatches, scalarRanges, type JsonSearchMode, type JsonSearchPreferences, type MatchGroup } from '../shared/jsonSearch.js';
+import { messageOf } from '../shared/errors.js';
+import { createInitialState, initialSearchMode, reducer, type AppState, type TreeState } from './state.js';
 import { isHostMessage, type HostMessage, type SortState, type WebviewSummary } from './protocol.js';
 import { send, vscode } from './bridge.js';
 import { setLocale, tr } from './i18n.js';
-import { formatTimestamp, parseTimestamp } from './dateTime.js';
+import { timestampLabel, type TimeDisplayOptions } from '../shared/dateTime.js';
+import { FindBar, SearchModeButton, highlightMatches, highlightTreeValue, isFindShortcut, nextMatchIndex, type FindNavigation } from './findBar.js';
+import { IconAction } from './iconAction.js';
 function jsonText(value: unknown, pretty = true): string {
   const result = JSON.stringify(value, null, pretty ? 2 : 0);
   return result === undefined ? String(value) : result;
@@ -37,6 +39,7 @@ function maxAutoDepth(summary: WebviewSummary): number {
 }
 const PHYSICAL_LINE_SORT = '\u0000physicalLine';
 const ERROR_TOAST_DURATION_MS = 4000;
+const SYSTEM_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 function sortSpec(sort?: SortState | null, fieldPointers?: Record<string, string>): { path: string; direction: 'asc' | 'desc' } | { by: 'physicalLine'; direction: 'asc' | 'desc' } | undefined {
   if (!sort) return undefined;
   if (sort.field === PHYSICAL_LINE_SORT) return sort.direction === 'asc' ? undefined : { by: 'physicalLine', direction: 'desc' };
@@ -68,11 +71,8 @@ function displayValue(value: unknown, summary: WebviewSummary, field?: string): 
   const property = pointer === undefined
     ? (summary.fieldPointers === undefined && field !== undefined && !/[.\[\]]/.test(field) ? field : undefined)
     : pointer === '' ? undefined : pointer.slice(pointer.lastIndexOf('/') + 1).replace(/~1/g, '/').replace(/~0/g, '~');
-  const milliseconds = parseTimestamp(value, property);
-  if (milliseconds !== undefined) {
-    const formatted = formatTimestamp(milliseconds, summary);
-    if (formatted) return { text: formatted.text, title: String(value) };
-  }
+  const formatted = timestampLabel(value, property, summary);
+  if (formatted) return { text: formatted.text, title: String(value) };
   if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(value) && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(value)) return { text: value, title: tr('timezoneUnknown') };
   if (typeof value === 'string') return { text: value };
   return { text: isContainer(value) ? jsonText(value, false) : String(value) };
@@ -80,27 +80,40 @@ function displayValue(value: unknown, summary: WebviewSummary, field?: string): 
 
 interface MenuItem { label: string; alternateLabel?: string; action(alternate: boolean): void; icon?: ReactNode; alternateIcon?: ReactNode }
 interface MenuState { x: number; y: number; items: MenuItem[] }
-interface DrawerState { title: string; value?: unknown; text?: string; physicalLine?: number; loading?: boolean }
+interface DrawerState { title: string; searchMode: JsonSearchMode; value?: unknown; text?: string; physicalLine?: number; loading?: boolean }
 interface FullTextState { text: string; physicalLine?: number; pointer?: string }
 const AltKeyContext = createContext(false);
 const TimeDisplayContext = createContext<Pick<WebviewSummary, 'locale' | 'timezone'>>({});
 
-function TimeAnnotation({ value, field }: { value: unknown; field?: string }): ReactNode {
-  const summary = useContext(TimeDisplayContext);
-  const milliseconds = parseTimestamp(value, field);
-  if (milliseconds === undefined) return null;
-  const formatted = formatTimestamp(milliseconds, summary);
-  return formatted ? <span className="timestamp-annotation" title={formatted.timezone}> ({formatted.text})</span> : null;
-}
-
 function pointerSegment(value: string): string { return value.replace(/~/g, '~0').replace(/\//g, '~1'); }
 
-function JsonScalarValue({ text, kind, annotation, actions, onExpand, onCopy, onOpen }: {
-  text: string; kind: string; annotation?: ReactNode; actions: boolean; onExpand(): void; onCopy(): void; onOpen(current: boolean): void;
+interface TreeFind {
+  matches: ReturnType<typeof scalarMatches>;
+  active: { id: string; occurrence: number };
+  ancestors: ReadonlySet<string>;
+  pages?: ReadonlyMap<string, JsonSearchTarget['pages'][number]>;
+  nodes?: ReadonlyMap<string, JsonNodeView>;
+}
+const TreeFindContext = createContext<TreeFind | undefined>(undefined);
+
+function JsonScalarValue({ text, kind, scalar, findId, field, actions, onExpand, onCopy, onOpen }: {
+  text: string; kind: string; scalar: unknown; findId?: string;
+  field?: string; actions: boolean; onExpand(): void; onCopy(): void; onOpen(current: boolean): void;
 }): ReactNode {
   const altPressed = useContext(AltKeyContext);
+  const find = useContext(TreeFindContext);
+  const time = useContext(TimeDisplayContext);
+  const active = find !== undefined && find.active.id === findId;
+  const match = findId === undefined ? undefined : find?.matches;
+  const activeIndex = active ? find.active.occurrence : -1;
+  const formatted = timestampLabel(scalar, field, time);
+  const label = formatted?.text;
+  const timeIndex = active && match && label ? activeIndex - [...match(text, scalar)].length : -1;
+  const content = useMemo(() => match ? highlightTreeValue(text, match(text, scalar), activeIndex) : text, [activeIndex, match, scalar, text]);
+  const annotation = formatted && <span className="timestamp-annotation" title={formatted.timezone}> ({match
+    ? highlightMatches(formatted.text, match(formatted.text, formatted.text), timeIndex) : formatted.text})</span>;
   return <>
-    <span className={`json-value value-${kind}`} title={text}>{text}{annotation}</span>
+    <span className={`json-value value-${kind}${active ? ' active-match-value' : ''}`} title={text}>{content}{annotation}</span>
     {actions && <span className="inline-actions">
       <button className="inline-action" type="button" title={tr('expand')} aria-label={tr('expand')} onClick={(event) => { event.stopPropagation(); onExpand(); }}><BrowseIcon /></button>
       <button className="inline-action" type="button" title={tr('copyValue')} aria-label={tr('copyValue')} onClick={(event) => { event.stopPropagation(); onCopy(); }}><CopyIcon /></button>
@@ -113,35 +126,32 @@ function DrawerHeader({ title, actions }: { title: string; actions?: ReactNode }
   return <div className="drawer-header-content"><span className="drawer-title">{title}</span>{actions && <div className="drawer-header-actions">{actions}</div>}</div>;
 }
 
-function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(event: React.MouseEvent<HTMLElement>): void }): ReactNode {
+function FullContentView({ text, onContextMenu, inline = false, shortcutEnabled = true }: {
+  text: string; onContextMenu(event: React.MouseEvent<HTMLElement>): void; inline?: boolean; shortcutEnabled?: boolean;
+}): ReactNode {
   const [query, setQuery] = useState('');
   const [activeMatch, setActiveMatch] = useState(0);
   const [searchVisible, setSearchVisible] = useState(false);
   const container = useRef<HTMLDivElement>(null);
-  const matches = useMemo(() => {
-    if (!query) return [];
-    const offsets: Array<{ start: number; end: number }> = [];
-    const expression = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
-    for (const match of text.matchAll(expression)) offsets.push({ start: match.index, end: match.index + match[0].length });
-    return offsets;
-  }, [query, text]);
+  const matches = useMemo(() => [...literalMatches(query)(text)], [query, text]);
 
-  useEffect(() => { setActiveMatch(0); }, [query]);
+  const onQuery = (value: string) => { setQuery(value); setActiveMatch(0); };
   useEffect(() => {
     container.current?.querySelector<HTMLElement>('[data-active-match="true"]')?.scrollIntoView?.({ block: 'center' });
   }, [activeMatch, matches]);
-  const closeSearch = () => { setSearchVisible(false); setQuery(''); };
   useEffect(() => {
+    if (!shortcutEnabled) return;
     const handleSearchKeys = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape' && searchVisible) {
+      if (event.key === 'Escape' && (searchVisible || inline && query)) {
         event.preventDefault();
         event.stopPropagation();
-        closeSearch();
+        setSearchVisible(false);
+        onQuery('');
         return;
       }
-      if (event.key.toLowerCase() !== 'f' || (!event.ctrlKey && !event.metaKey) || event.altKey) return;
+      if (!isFindShortcut(event)) return;
       event.preventDefault();
-      if (searchVisible) {
+      if (searchVisible || inline) {
         const input = container.current?.querySelector<HTMLInputElement>('.drawer-search-input input');
         input?.focus();
         input?.select();
@@ -149,7 +159,7 @@ function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(
     };
     window.addEventListener('keydown', handleSearchKeys, true);
     return () => window.removeEventListener('keydown', handleSearchKeys, true);
-  }, [searchVisible]);
+  }, [inline, query, searchVisible, shortcutEnabled]);
   useEffect(() => {
     if (!searchVisible) return;
     const input = container.current?.querySelector<HTMLInputElement>('.drawer-search-input input');
@@ -158,28 +168,16 @@ function FullContentView({ text, onContextMenu }: { text: string; onContextMenu(
   }, [searchVisible]);
 
   const move = (direction: 1 | -1) => {
-    if (matches.length) setActiveMatch((current) => (current + direction + matches.length) % matches.length);
+    setActiveMatch((current) => nextMatchIndex(current, matches.length, direction));
   };
-  const highlighted = matches.length ? matches.flatMap((match, index) => [
-    text.slice(index === 0 ? 0 : matches[index - 1]!.end, match.start),
-    <mark key={match.start} className={index === activeMatch ? 'active-match' : undefined} data-active-match={index === activeMatch}>{text.slice(match.start, match.end)}</mark>
-  ]).concat(text.slice(matches.at(-1)!.end)) : text;
+  const find = (className: string) => <FindBar className={className} query={query}
+    label={tr(inline ? 'searchRawRecord' : 'searchContent')} onQuery={onQuery}
+    navigation={{ index: activeMatch, total: matches.length, move }}
+    {...(inline ? {} : { onClose: () => { setSearchVisible(false); onQuery(''); } })} />;
 
   return <div ref={container} className="drawer-content full-content">
-    {searchVisible && <div className="drawer-search-overlay">
-      <div className="drawer-search">
-        <label className="drawer-search-input">
-          <span className="sr-only">{tr('searchContent')}</span>
-          <Input type="search" value={query} placeholder={tr('searchContent')} clearable prefixIcon={<SearchIcon />}
-            onChange={setQuery} onEnter={(_, context) => move(context.e.shiftKey ? -1 : 1)} />
-        </label>
-        <span className="match-count" aria-live="polite">{tr('matchCount', { current: matches.length ? activeMatch + 1 : 0, total: matches.length })}</span>
-        <button type="button" className="match-navigation" title={tr('previousMatch')} aria-label={tr('previousMatch')} disabled={!matches.length} onClick={() => move(-1)}><ChevronUpIcon /></button>
-        <button type="button" className="match-navigation" title={tr('nextMatch')} aria-label={tr('nextMatch')} disabled={!matches.length} onClick={() => move(1)}><ChevronDownIcon /></button>
-        <button type="button" className="match-navigation search-close" title={tr('closeSearch')} aria-label={tr('closeSearch')} onClick={closeSearch}><CloseIcon /></button>
-      </div>
-    </div>}
-    <pre className="text-viewer full-content-viewer" onContextMenu={onContextMenu}>{highlighted}</pre>
+    {inline ? find('record-find') : searchVisible && <div className="drawer-search-overlay">{find('drawer-search')}</div>}
+    <pre className="text-viewer full-content-viewer" onContextMenu={onContextMenu}>{highlightMatches(text, matches, activeMatch)}</pre>
   </div>;
 }
 
@@ -218,13 +216,16 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
 }): ReactNode {
   const entries = Array.isArray(value) ? value.map((item, index) => [String(index), item] as const) : isContainer(value) ? Object.entries(value) : [];
   const expandable = entries.length > 0;
-  const [open, setOpen] = useState(expandable && initiallyExpanded && level <= maxDepth);
+  const [manuallyOpen, setOpen] = useState(expandable && initiallyExpanded && level <= maxDepth);
+  const find = useContext(TreeFindContext);
+  const forcedOpen = pointer !== undefined && find?.ancestors.has(pointer) === true;
+  const open = expandable && (manuallyOpen || forcedOpen);
   const shown = typeof value === 'string' ? value : value === null ? 'null' : isContainer(value) ? '' : String(value);
   const childPath = (key: string) => jsonPath === undefined ? undefined : Array.isArray(value) ? `${jsonPath}[${key}]` : `${jsonPath}${/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) ? `.${key}` : `.${JSON.stringify(key)}`}`;
   const childPointer = (key: string) => pointer === undefined ? undefined : `${pointer}/${pointerSegment(key)}`;
-  const toggle = () => { if (expandable) setOpen((current) => !current); };
+  const toggle = () => { if (expandable && !forcedOpen) setOpen((current) => !current); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!expandable) return;
+    if (!expandable || forcedOpen) return;
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
     if (event.key === 'ArrowRight' && !open) { event.preventDefault(); setOpen(true); }
     if (event.key === 'ArrowLeft' && open) { event.preventDefault(); setOpen(false); }
@@ -235,8 +236,8 @@ function ValueTree({ value, label = '@', level = 1, initiallyExpanded = true, ma
       onContextMenu={(event) => { event.preventDefault(); onMenu?.(event, label === '@' ? undefined : label, value, jsonPath); }}>
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{label}</span>
-      {expandable ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span>
-        : <JsonScalarValue text={shown} kind={valueKind(value)} annotation={<TimeAnnotation value={value} field={label} />} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string, pointer)} onCopy={() => onCopyText?.(value as string, pointer)} onOpen={(current) => onOpenText?.(value as string, current, pointer)} />}
+      {isContainer(value) ? <span className={`shape shape-${valueKind(value)}`}>{Array.isArray(value) ? '[ ]' : '{ }'}&nbsp; {entries.length}</span>
+        : <JsonScalarValue text={shown} kind={valueKind(value)} scalar={value} field={label} {...(pointer === undefined ? {} : { findId: pointer })} actions={typeof value === 'string'} onExpand={() => onLongText?.(value as string, pointer)} onCopy={() => onCopyText?.(value as string, pointer)} onOpen={(current) => onOpenText?.(value as string, current, pointer)} />}
     </div>
     {open && <div role="group">{entries.map(([key, child]) => <ValueTree key={key} value={child} label={key} level={level + 1} initiallyExpanded={initiallyExpanded} maxDepth={maxDepth} jsonPath={childPath(key)} pointer={childPointer(key)} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}</div>}
   </>;
@@ -251,37 +252,51 @@ interface ServerTreeNodeProps {
 }
 
 const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tree, summary, dispatch, requestChildren, onMenu, onLongText, onCopyText, onOpenText }: ServerTreeNodeProps): ReactNode {
-  const node = tree.nodes[nodeId];
+  const find = useContext(TreeFindContext);
+  const node = tree.nodes[nodeId] ?? find?.nodes?.get(nodeId);
   if (!node) throw new Error(`Tree node ${nodeId} is missing.`);
   const expandable = node.childrenCount > 0;
-  const autoOpen = tree.mode === 'expanded' && level <= maxAutoDepth(summary) && !tree.manuallyCollapsed.has(nodeId);
-  const open = expandable && (tree.expanded.has(nodeId) || autoOpen);
+  const searchPage = find?.pages?.get(nodeId);
+  const autoOpen = tree.nodes[nodeId] !== undefined && tree.mode === 'expanded' && level <= maxAutoDepth(summary) && !tree.manuallyCollapsed.has(nodeId);
+  const open = expandable && (tree.expanded.has(nodeId) || autoOpen || Boolean(searchPage));
   const loaded = tree.loadedCount[nodeId] ?? 0;
   const loading = tree.loading.has(nodeId);
   useEffect(() => {
-    if (open && loaded === 0 && node.childrenCount > 0 && !loading) requestChildren(node, 0);
-  }, [loaded, loading, node, open, requestChildren]);
-  const toggle = () => { if (expandable) dispatch({ type: 'toggleNode', nodeId, open: !open }); };
+    if (open && loaded === 0 && node.childrenCount > 0 && !loading && !searchPage) requestChildren(node, 0);
+  }, [loaded, loading, node, open, requestChildren, searchPage]);
+  const toggle = () => { if (expandable && !searchPage) dispatch({ type: 'toggleNode', nodeId, open: !open }); };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!expandable) return;
+    if (!expandable || searchPage) return;
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggle(); }
     if (event.key === 'ArrowRight' && !open) { event.preventDefault(); dispatch({ type: 'toggleNode', nodeId, open: true }); }
     if (event.key === 'ArrowLeft' && open) { event.preventDefault(); dispatch({ type: 'toggleNode', nodeId, open: false }); }
   };
   const text = node.displayValue ?? (node.type === 'null' ? 'null' : '');
+  const scalar = node.type === 'number' ? Number(text) : node.type === 'boolean' ? text === 'true' : node.type === 'null' ? null : text;
+  const normalChildren = tree.children[nodeId] ?? [];
+  const extra = searchPage?.nodes.slice(Math.max(0, loaded - searchPage.offset)).map((child) => child.nodeId) ?? [];
+  const hasGap = searchPage !== undefined && searchPage.offset > loaded && extra.length > 0;
+  const canLoadMore = loaded < node.childrenCount && (hasGap || loaded + extra.length < node.childrenCount);
+  const more = canLoadMore && <button className="tree-load-more" type="button" disabled={loading} style={{ '--level': level } as CSSProperties} onClick={() => requestChildren(node, loaded)}>{loading ? tr('loading') : tr('loadMore', { loaded, total: node.childrenCount })}</button>;
+  const renderChild = (childId: string) => <ServerTreeNode key={childId} nodeId={childId} level={level + 1} tree={tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />;
   return <>
     <div className={`tree-row ${expandable ? 'expandable' : ''}`} role="treeitem" aria-level={level} aria-expanded={expandable ? open : undefined} tabIndex={0}
       style={{ '--level': level - 1 } as CSSProperties} onClick={toggle} onKeyDown={onKeyDown}
       onContextMenu={(event) => { event.preventDefault(); onMenu(event, node); }}>
       <ChevronRightIcon className={`chevron ${open ? 'open' : ''}`} aria-hidden />
       <span className="json-key">{node.key ?? '@'}</span>
-      {expandable ? <span className={`shape shape-${node.type}`}>{node.type === 'array' ? '[ ]' : '{ }'}&nbsp; {node.childrenCount}</span>
-        : <JsonScalarValue text={text} kind={node.type} annotation={<TimeAnnotation value={node.type === 'number' ? Number(text) : node.type === 'string' ? text : undefined} {...(node.key === undefined ? {} : { field: node.key })} />} actions={node.type === 'string'} onExpand={() => onLongText(text)} onCopy={() => onCopyText(text)} onOpen={(current) => onOpenText(text, current)} />}
+      {node.type === 'object' || node.type === 'array' ? <span className={`shape shape-${node.type}`}>{node.type === 'array' ? '[ ]' : '{ }'}&nbsp; {node.childrenCount}</span>
+        : <JsonScalarValue text={text} kind={node.type} scalar={scalar} findId={nodeId} {...(node.key === undefined ? {} : { field: node.key })} actions={node.type === 'string'} onExpand={() => onLongText(text)} onCopy={() => onCopyText(text)} onOpen={(current) => onOpenText(text, current)} />}
       {loading && <span className="loading-label">{tr('loading')}</span>}
     </div>
     {open && <div role="group">
-      {(tree.children[nodeId] ?? []).map((childId) => <ServerTreeNode key={childId} nodeId={childId} level={level + 1} tree={tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onMenu} onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />)}
-      {loaded < node.childrenCount && <button className="tree-load-more" type="button" disabled={loading} style={{ '--level': level } as CSSProperties} onClick={() => requestChildren(node, loaded)}>{loading ? tr('loading') : tr('loadMore', { loaded, total: node.childrenCount })}</button>}
+      {normalChildren.map(renderChild)}
+      {hasGap && <>
+        {more}
+        <div className="tree-search-window" style={{ '--level': level } as CSSProperties}>{tr('resultWindow', { first: searchPage.offset + 1, last: searchPage.offset + searchPage.nodes.length })}</div>
+      </>}
+      {extra.map(renderChild)}
+      {!hasGap && more}
     </div>}
   </>;
 }, (previous, next) => {
@@ -307,19 +322,24 @@ const ServerTreeNode = memo(function ServerTreeNodeComponent({ nodeId, level, tr
     && previous.tree.manuallyCollapsed.has(id) === next.tree.manuallyCollapsed.has(id);
 });
 
-function Toolbar({ summary, query, onQuery, onFormat, onRepair, onExport, onOpenSource }: {
+function Toolbar({ summary, query, onQuery, onFormat, onRepair, onExport, onOpenSource, jsonSearch }: {
   summary: WebviewSummary; query: string; onQuery(value: string): void; onFormat(): void; onRepair(): void; onExport(): void; onOpenSource(): void;
+  jsonSearch: { mode: JsonSearchMode; onMode(mode: JsonSearchMode): void; navigation?: FindNavigation; error?: string };
 }): ReactNode {
   const placeholder = summary.kind === 'json' ? tr('searchJson') : tr('searchJsonl');
+  const { mode, onMode, ...find } = jsonSearch;
   return <header className="toolbar">
     <div className="brand"><span className="brand-mark"><BrandIcon /></span><span className="brand-title">{summary.kind === 'json' ? 'JSON Preview' : 'JSONL Preview'}</span></div>
-    <Input className="search-input" type="search" value={query} placeholder={placeholder} aria-label={placeholder} clearable prefixIcon={<SearchIcon />} onChange={onQuery} />
+    {summary.kind === 'json'
+      ? <FindBar className="document-find" query={query} label={placeholder} onQuery={onQuery} {...find} />
+      : <Input className="search-input" type="search" value={query} placeholder={placeholder} aria-label={placeholder} clearable prefixIcon={<SearchIcon />} onChange={onQuery} />}
     <div className="toolbar-actions flex items-center gap-2">
       {summary.kind === 'json' ? <>
-        <Button variant="outline" size="small" icon={<FormatPainterIcon />} onClick={onFormat}>{tr('format')}</Button>
-        <Button variant="outline" size="small" icon={<ToolsIcon />} onClick={onRepair}>{tr('repair')}</Button>
-      </> : <Button variant="outline" size="small" icon={<FileExportIcon />} onClick={onExport}>{tr('export')}</Button>}
-      <Button theme="primary" size="small" icon={<CodeIcon />} onClick={onOpenSource}>{tr('source')}</Button>
+        <IconAction label={tr('format')} icon={<FormatPainterIcon />} onClick={onFormat} />
+        <IconAction label={tr('repair')} icon={<ToolsIcon />} onClick={onRepair} />
+        <SearchModeButton mode={mode} onMode={onMode} />
+      </> : <IconAction label={tr('export')} icon={<FileExportIcon />} onClick={onExport} />}
+      <IconAction label={tr('source')} icon={<CodeIcon />} onClick={onOpenSource} primary />
     </div>
   </header>;
 }
@@ -337,20 +357,153 @@ function JsonTreeView({ state, dispatch, requestChildren, onServerMenu, onValueM
   openText(text: string): void; copyText(text: string): void; openTextTab(text: string, current: boolean): void;
 }): ReactNode {
   const summary = state.summary!;
-  if (state.searchResult) return <section className="surface tree-surface">
+  const result = state.searchResult;
+  const target = result && 'matchCount' in result ? result.target : undefined;
+  const query = result?.query ?? '';
+  const match = useMemo(() => scalarMatches(query), [query]);
+  const find = useMemo((): TreeFind | undefined => {
+    if (!target) return undefined;
+    const pages = new Map(target.pages.map((page) => [page.parentId, page]));
+    const nodes = new Map<string, JsonNodeView>();
+    for (const page of target.pages) for (const node of page.nodes) nodes.set(node.nodeId, node);
+    return { matches: match, active: { id: target.nodeId, occurrence: target.occurrence }, ancestors: new Set(pages.keys()), pages, nodes };
+  }, [match, target]);
+  const tree = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (target) tree.current?.querySelector('[data-active-match="true"]')?.scrollIntoView?.({ block: 'center' });
+  }, [target]);
+  if (result && 'result' in result) return <section className="surface tree-surface">
     <div className="surface-heading"><span className="surface-title">{tr('queryResult')}</span></div>
-    <div className="tree" role="tree" aria-label={tr('queryResultAria')}><ValueTree value={state.searchResult.result} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openText} onCopyText={copyText} onOpenText={openTextTab} /></div>
+    <div className="tree" role="tree" aria-label={tr('queryResultAria')}><ValueTree key={result.query} value={result.result} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onValueMenu} onLongText={openText} onCopyText={copyText} onOpenText={openTextTab} /></div>
   </section>;
   return <section className="surface tree-surface">
     <div className="surface-heading">
       <span className="surface-title">{tr('structure')}</span>
       {summary.root && <Button variant="text" size="small" onClick={() => dispatch({ type: 'treeMode', mode: state.tree.mode === 'expanded' ? 'collapsed' : 'expanded' })}>{state.tree.mode === 'expanded' ? tr('collapseAll') : tr('expandAll')}</Button>}
     </div>
-    <div className="tree" role="tree" aria-label={tr('structure')}>
+    <div className="tree" ref={tree} role="tree" aria-label={tr('structure')}>
       {!summary.root ? <div className="empty-state"><span className="empty-icon">!</span><h2>{tr('invalidJson')}</h2>{(summary.diagnostics ?? []).map((diagnostic) => <div className="error" key={`${diagnostic.offset}-${diagnostic.code}`}>{tr('location', { line: diagnostic.line, column: diagnostic.column })} · {diagnostic.message}</div>)}</div>
-        : <ServerTreeNode nodeId={summary.root.nodeId} level={1} tree={state.tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onServerMenu} onLongText={openText} onCopyText={copyText} onOpenText={openTextTab} />}
+        : <TreeFindContext.Provider value={find}><ServerTreeNode nodeId={summary.root.nodeId} level={1} tree={state.tree} summary={summary} dispatch={dispatch} requestChildren={requestChildren} onMenu={onServerMenu} onLongText={openText} onCopyText={copyText} onOpenText={openTextTab} /></TreeFindContext.Provider>}
     </div>
   </section>;
+}
+
+type LocalSearch = { result: unknown } | { groups: MatchGroup<string>[]; count: number } | { error: string };
+
+function searchRecord(value: unknown, query: string, mode: JsonSearchMode, time: TimeDisplayOptions): LocalSearch {
+  try {
+    const projection = queryProjection(() => value, query);
+    if (projection) {
+      checkQueryResultSize(projection.result);
+      return projection;
+    }
+    const match = scalarMatches(query);
+    const groups: MatchGroup<string>[] = [];
+    const result: unknown[] = [];
+    const pending: Array<{ node: unknown; pointer: string; field?: string }> = [{ node: value, pointer: '' }];
+    let count = 0;
+    while (pending.length) {
+      const { node, pointer, field } = pending.pop()!;
+      if (isContainer(node)) {
+        const entries = Object.entries(node);
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const [key, child] = entries[i]!;
+          pending.push({ node: child, pointer: `${pointer}/${pointerSegment(key)}`, field: key });
+        }
+      } else {
+        const ranges = scalarRanges(match, String(node), node, field, time);
+        if (mode === 'filter') {
+          if (!ranges.next().done) result.push(node);
+          continue;
+        }
+        const first = count;
+        for (const _ of ranges) count++;
+        if (count > first) groups.push({ node: pointer, first });
+      }
+    }
+    if (mode === 'filter') {
+      checkQueryResultSize(result);
+      return { result: result.reverse() };
+    }
+    return { groups, count };
+  } catch (error) {
+    return { error: messageOf(error) };
+  }
+}
+
+function RecordTreeView({ value, summary, mode, shortcutEnabled, onMenu, onLongText, onCopyText, onOpenText, openResultText, copyResultText, openResultTab }: {
+  value: unknown; summary: WebviewSummary; mode: JsonSearchMode; shortcutEnabled: boolean;
+  onMenu: NonNullable<Parameters<typeof ValueTree>[0]['onMenu']>;
+  onLongText(text: string, pointer?: string): void;
+  onCopyText(text: string, pointer?: string): void;
+  onOpenText(text: string, current: boolean, pointer?: string): void;
+  openResultText(text: string): void; copyResultText(text: string): void; openResultTab(text: string, current: boolean): void;
+}): ReactNode {
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [index, setIndex] = useState(0);
+  const tree = useRef<HTMLDivElement>(null);
+  const trimmed = query.trim();
+  useEffect(() => { setIndex(0); }, [mode]);
+  useEffect(() => {
+    if (!shortcutEnabled) return;
+    const handleSearchKeys = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape' && query) {
+        event.preventDefault();
+        event.stopPropagation();
+        setQuery('');
+        setIndex(0);
+      } else if (isFindShortcut(event)) {
+        event.preventDefault();
+        event.stopPropagation();
+        const input = tree.current?.parentElement?.querySelector<HTMLInputElement>('.record-find input');
+        input?.focus();
+        input?.select();
+      }
+    };
+    window.addEventListener('keydown', handleSearchKeys, true);
+    return () => window.removeEventListener('keydown', handleSearchKeys, true);
+  }, [query, shortcutEnabled]);
+  useEffect(() => {
+    if (!trimmed) { setDebouncedQuery(''); return; }
+    const timer = window.setTimeout(() => setDebouncedQuery(trimmed), 180);
+    return () => window.clearTimeout(timer);
+  }, [trimmed]);
+  const search = useMemo(() => trimmed && trimmed === debouncedQuery ? searchRecord(value, trimmed, mode, summary) : undefined,
+    [debouncedQuery, mode, summary, trimmed, value]);
+  const result = search && 'result' in search ? search : undefined;
+  const error = search && 'error' in search ? search.error : undefined;
+  const total = search && 'count' in search ? search.count : 0;
+  const group = search && 'groups' in search ? matchGroupAt(search.groups, index) : undefined;
+  const match = useMemo(() => scalarMatches(trimmed), [trimmed]);
+  const find = useMemo((): TreeFind | undefined => {
+    if (!group) return undefined;
+    const ancestors = new Set<string>();
+    for (let end = group.node.lastIndexOf('/'); end >= 0; end = group.node.lastIndexOf('/', end - 1)) {
+      ancestors.add(group.node.slice(0, end));
+      if (end === 0) break;
+    }
+    return { matches: match, active: { id: group.node, occurrence: index - group.first }, ancestors };
+  }, [group, index, match]);
+  useEffect(() => {
+    if (find) tree.current?.querySelector('[data-active-match="true"]')?.scrollIntoView?.({ block: 'center' });
+  }, [find]);
+  return <div className="drawer-content">
+    <FindBar className="record-find" label={tr('searchRecord')} query={query}
+      onQuery={(text) => { setQuery(text.slice(0, 1024)); setIndex(0); }}
+      {...(error ? { error } : {})}
+      {...(mode === 'reveal' && !result && !error ? { navigation: { index, total, move: (direction: 1 | -1) => setIndex((current) => nextMatchIndex(current, total, direction)) } } : {})} />
+    <div className="tree drawer-tree" ref={tree} role="tree" aria-label={tr('structure')} hidden={Boolean(result)}>
+      <TreeFindContext.Provider value={find}>
+        <ValueTree value={value} maxDepth={maxAutoDepth(summary)} jsonPath="@" pointer="" onMenu={onMenu}
+          onLongText={onLongText} onCopyText={onCopyText} onOpenText={onOpenText} />
+      </TreeFindContext.Provider>
+    </div>
+    {result && <div className="tree drawer-tree" role="tree" aria-label={tr('queryResultAria')}>
+      <ValueTree key={trimmed} value={result.result} maxDepth={maxAutoDepth(summary)} jsonPath="@" onMenu={onMenu}
+        onLongText={openResultText} onCopyText={copyResultText} onOpenText={openResultTab} />
+    </div>}
+  </div>;
 }
 
 function LegacyJsonlGrid({ state, onSort, onPage, onRecord }: {
@@ -474,6 +627,7 @@ export function App(): ReactNode {
   const [state, dispatch] = useReducer(reducer, initialView, createInitialState);
   const stateRef = useRef(state); stateRef.current = state;
   const queryRevision = useRef(0), searchRevision = useRef(0);
+  const requestedMatch = useRef(0);
   const childRequests = useRef(new Set<string>());
   const lastCriteria = useRef<string | undefined>(undefined);
   const [menu, setMenu] = useState<MenuState>();
@@ -493,6 +647,49 @@ export function App(): ReactNode {
     else send({ type: 'openTemp', text: temporaryText(text) });
   }, []);
 
+  const invalidateJsonSearch = useCallback(() => {
+    requestedMatch.current = 0;
+    dispatch({ type: 'startSearch', searchRevision: ++searchRevision.current });
+  }, []);
+
+  const changeToolbarQuery = useCallback((query: string) => {
+    if (stateRef.current.summary?.kind === 'json') {
+      query = query.slice(0, 1024);
+      if (query === stateRef.current.view.query) return;
+      invalidateJsonSearch();
+    }
+    dispatch({ type: 'setQuery', query });
+  }, [invalidateJsonSearch]);
+
+  const rememberSearchMode = useCallback((mode: JsonSearchMode) => {
+    dispatch({ type: 'searchPreferences', preferences: { ...stateRef.current.searchPreferences, lastMode: mode } });
+    send({ type: 'setSearchMode', mode });
+  }, []);
+
+  const changeDocumentMode = useCallback((mode: JsonSearchMode) => {
+    invalidateJsonSearch();
+    dispatch({ type: 'setSearchMode', mode });
+    rememberSearchMode(mode);
+  }, [invalidateJsonSearch, rememberSearchMode]);
+
+  const changeRecordMode = useCallback((mode: JsonSearchMode) => {
+    setDrawer((current) => current && { ...current, searchMode: mode });
+    rememberSearchMode(mode);
+  }, [rememberSearchMode]);
+
+  const requestJsonSearch = useCallback((query: string, mode: JsonSearchMode, matchIndex = 0) => {
+    const revision = ++searchRevision.current;
+    dispatch({ type: 'startSearch', searchRevision: revision });
+    send({ type: 'jsonSearch', query, mode, searchRevision: revision, matchIndex, systemTimezone: SYSTEM_TIMEZONE });
+  }, []);
+
+  const moveDocumentMatch = useCallback((direction: 1 | -1) => {
+    const current = stateRef.current.searchResult;
+    if (!current || !('matchCount' in current) || current.matchCount === 0) return;
+    requestedMatch.current = nextMatchIndex(requestedMatch.current, current.matchCount, direction);
+    requestJsonSearch(current.query, 'reveal', requestedMatch.current);
+  }, [requestJsonSearch]);
+
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => { if (event.key === 'Alt') setAltPressed(true); };
     const onKeyUp = (event: globalThis.KeyboardEvent) => { if (event.key === 'Alt') setAltPressed(false); };
@@ -501,8 +698,8 @@ export function App(): ReactNode {
     return () => { window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onBlur); };
   }, []);
 
-  const recordDrawer = useCallback((physicalLine: number, text: string): DrawerState => ({
-    title: tr('line', { line: physicalLine }), physicalLine,
+  const recordDrawer = useCallback((physicalLine: number, text: string, searchMode: JsonSearchMode): DrawerState => ({
+    title: tr('line', { line: physicalLine }), physicalLine, searchMode,
     value: (() => { try { return JSON.parse(text) as unknown; } catch { return undefined; } })(), text
   }), []);
 
@@ -510,15 +707,25 @@ export function App(): ReactNode {
     const onMessage = (event: MessageEvent<unknown>) => {
       if (!isHostMessage(event.data)) return;
       const message = event.data as HostMessage;
-      if (message.type === 'init') { setLocale(message.summary.locale); initialized.current = true; lastCriteria.current = undefined; childRequests.current.clear(); dispatch({ type: 'init', summary: message.summary, view: message.uiState }); }
+      if (message.type === 'init') {
+        setLocale(message.summary.locale);
+        initialized.current = true;
+        lastCriteria.current = undefined;
+        childRequests.current.clear();
+        invalidateJsonSearch();
+        setDrawer(undefined);
+        setFullText(undefined);
+        dispatch({ type: 'init', summary: message.summary, view: message.uiState, ...(message.searchPreferences ? { searchPreferences: message.searchPreferences } : {}) });
+      }
       else if (message.type === 'children') {
         childRequests.current.delete(`${message.generation}:${message.parentId}:${message.offset}`);
         dispatch({ type: 'treeChildren', generation: message.generation, parentId: message.parentId, offset: message.offset, nodes: message.nodes });
       }
       else if (message.type === 'page') dispatch({ type: 'page', queryRevision: message.queryRevision, offset: message.offset, page: { rows: message.rows, total: message.total, scannedRows: message.scannedRows, matchedRows: message.matchedRows, isComplete: message.isComplete, ...(message.errors === undefined ? {} : { errors: message.errors }), ...(message.errorsComplete === undefined ? {} : { errorsComplete: message.errorsComplete }) } });
-      else if (message.type === 'record') setDrawer((current) => current?.physicalLine === message.physicalLine ? recordDrawer(message.physicalLine, message.content) : current);
+      else if (message.type === 'record') setDrawer((current) => current?.physicalLine === message.physicalLine ? recordDrawer(message.physicalLine, message.content, current.searchMode) : current);
       else if (message.type === 'copied') announce(tr('copied'));
-      else if (message.type === 'search') dispatch({ type: 'search', searchRevision: message.searchRevision, query: message.query, result: message.result });
+      else if (message.type === 'search' || message.type === 'searchError') dispatch(message);
+      else if (message.type === 'searchPreferences') dispatch({ type: 'searchPreferences', preferences: message });
       else if (message.type === 'progress') dispatch({ type: 'progress', records: message.records });
       else if (message.type === 'error') {
         childRequests.current.clear();
@@ -527,7 +734,7 @@ export function App(): ReactNode {
     };
     window.addEventListener('message', onMessage); send({ type: 'ready' });
     return () => window.removeEventListener('message', onMessage);
-  }, [announce, recordDrawer]);
+  }, [announce, invalidateJsonSearch, recordDrawer]);
 
   useEffect(() => {
     vscode.setState(state.view);
@@ -543,27 +750,46 @@ export function App(): ReactNode {
 
   useEffect(() => {
     const summary = state.summary;
-    if (!summary || !initialized.current) return;
+    if (summary?.kind !== 'json' || !initialized.current) return;
+    const query = state.view.query?.trim() ?? '';
+    if (!query) return;
+    const timer = window.setTimeout(() => requestJsonSearch(query, state.searchMode), 180);
+    return () => window.clearTimeout(timer);
+  }, [state.summary?.kind, state.tree.generation, state.view.query, state.searchMode, requestJsonSearch]);
+
+  useEffect(() => {
+    const summary = stateRef.current.summary;
+    if (summary?.kind !== 'jsonl' || !initialized.current) return;
     const timer = window.setTimeout(() => {
       const query = state.view.query?.trim() ?? '';
-      if (summary.kind === 'json') {
-        const revision = ++searchRevision.current;
-        dispatch({ type: 'startSearch', searchRevision: revision });
-        if (query) send({ type: 'jsonSearch', query, searchRevision: revision });
-        else dispatch({ type: 'clearSearch', searchRevision: revision });
-      } else {
-        const revision = ++queryRevision.current;
-        dispatch({ type: 'startQuery', queryRevision: revision });
-        const sort = sortSpec(state.view.sort, summary.fieldPointers);
-        const criteria = JSON.stringify({ query, sort });
-        const hasPreviousRequest = lastCriteria.current !== undefined;
-        lastCriteria.current = criteria;
-        if (query || sort || hasPreviousRequest) send({ type: 'query', queryRevision: revision, ...(query ? { jmesPath: query } : {}), ...(sort ? { sort } : {}) });
-        else send({ type: 'page', offset: 0, queryRevision: revision });
-      }
-    }, summary.kind === 'jsonl' ? 120 : 180);
+      const revision = ++queryRevision.current;
+      dispatch({ type: 'startQuery', queryRevision: revision });
+      const sort = sortSpec(state.view.sort, summary.fieldPointers);
+      const criteria = JSON.stringify({ query, sort });
+      const hasPreviousRequest = lastCriteria.current !== undefined;
+      lastCriteria.current = criteria;
+      if (query || sort || hasPreviousRequest) send({ type: 'query', queryRevision: revision, ...(query ? { jmesPath: query, systemTimezone: SYSTEM_TIMEZONE } : {}), ...(sort ? { sort } : {}) });
+      else send({ type: 'page', offset: 0, queryRevision: revision });
+    }, 120);
     return () => window.clearTimeout(timer);
   }, [state.tree.generation, state.view.query, state.view.sort]);
+
+  useEffect(() => {
+    if (drawer || fullText || state.summary?.kind !== 'json') return;
+    const handleSearchKeys = (event: globalThis.KeyboardEvent) => {
+      const input = document.querySelector<HTMLInputElement>('.document-find input');
+      if (event.key === 'Escape' && input === document.activeElement && input?.value) {
+        event.preventDefault();
+        changeToolbarQuery('');
+      } else if (input && isFindShortcut(event)) {
+        event.preventDefault();
+        input.focus();
+        input.select();
+      }
+    };
+    window.addEventListener('keydown', handleSearchKeys, true);
+    return () => window.removeEventListener('keydown', handleSearchKeys, true);
+  }, [changeToolbarQuery, drawer, fullText, state.summary?.kind]);
 
   const requestChildren = useCallback((node: JsonNodeView, offset: number) => {
     const current = stateRef.current;
@@ -648,8 +874,9 @@ export function App(): ReactNode {
     send({ type: 'page', offset, queryRevision: stateRef.current.queryRevision });
   }, []);
   const onRecord = useCallback((row: JsonlRow) => {
-    if (!row.rawTruncated) { setDrawer(recordDrawer(row.physicalLine, row.raw)); return; }
-    setDrawer({ title: tr('line', { line: row.physicalLine }), physicalLine: row.physicalLine, loading: true });
+    const searchMode = initialSearchMode(stateRef.current.searchPreferences);
+    if (!row.rawTruncated) { setDrawer(recordDrawer(row.physicalLine, row.raw, searchMode)); return; }
+    setDrawer({ title: tr('line', { line: row.physicalLine }), physicalLine: row.physicalLine, searchMode, loading: true });
     send({ type: 'record', physicalLine: row.physicalLine });
   }, [recordDrawer]);
 
@@ -657,20 +884,35 @@ export function App(): ReactNode {
   useEffect(() => { document.querySelector('#app')?.setAttribute('aria-busy', String(!summary)); }, [summary]);
   if (!summary) return <main className="loading-screen"><span className="loading-spinner" aria-hidden /><span>{tr('preparing')}</span></main>;
   const extra = summary.kind === 'json' ? (state.searchResult?.query ? tr('expression', { value: state.searchResult.query }) : undefined) : tr('results', { count: state.page.total });
+  const match = state.searchResult && 'matchCount' in state.searchResult ? state.searchResult : undefined;
+  const showNavigation = state.searchMode === 'reveal' && !state.searchError && (!state.searchResult || match);
+  const hasDrawerContent = drawer && !drawer.loading && drawer.text !== undefined;
   return <TimeDisplayContext.Provider value={summary}><AltKeyContext.Provider value={altPressed}><main className={summary.kind === 'jsonl' ? 'jsonl-layout' : undefined}>
-    <Toolbar summary={summary} query={state.view.query ?? ''} onQuery={(query) => dispatch({ type: 'setQuery', query })} onFormat={() => send({ type: 'format' })} onRepair={() => send({ type: 'repair' })} onExport={() => send({ type: 'export', queryRevision: state.queryRevision })} onOpenSource={() => send({ type: 'openSource' })} />
+    <Toolbar summary={summary} query={state.view.query ?? ''} onQuery={changeToolbarQuery} onFormat={() => send({ type: 'format' })} onRepair={() => send({ type: 'repair' })} onExport={() => send({ type: 'export', queryRevision: state.queryRevision })} onOpenSource={() => send({ type: 'openSource' })}
+      jsonSearch={{ mode: state.searchMode, onMode: changeDocumentMode, ...(state.searchError ? { error: state.searchError } : {}),
+        ...(showNavigation ? { navigation: { index: match?.matchIndex ?? 0, total: match?.matchCount ?? 0, move: moveDocumentMatch } } : {}) }} />
     <StatusBar summary={summary} extra={extra} progress={state.progressRecords} />
     {summary.kind === 'json'
       ? <JsonTreeView state={state} dispatch={dispatch} requestChildren={requestChildren} onServerMenu={onServerMenu} onValueMenu={onValueMenu} openText={openLongText} copyText={copied} openTextTab={openTextTab} />
       : <MemoizedJsonlGrid state={state} onSort={onSort} onPage={onPage} onRecord={onRecord} onCellMenu={onCellMenu} onColumnWidthsChange={onColumnWidthsChange} />}
     {menu && <ContextMenu menu={menu} close={() => setMenu(undefined)} />}
-    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={!drawer.loading && drawer.text !== undefined && <><Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => drawer.physicalLine ? send({ type: 'copy', physicalLine: drawer.physicalLine }) : copied(drawer.text!)}>{tr('copyLine')}</Button><Button size="small" variant="outline" title={altPressed ? tr('openCurrent') : tr('openTempHint')} icon={altPressed ? <EnterIcon /> : <TabIcon />} onClick={(event) => drawer.physicalLine ? send({ type: event.altKey || altPressed ? 'openCurrent' : 'openTemp', physicalLine: drawer.physicalLine }) : send(event.altKey || altPressed ? { type: 'openCurrent', text: drawer.text! } : { type: 'openTemp', text: drawer.text! })}>{altPressed ? tr('currentTab') : tr('tempTab')}</Button></>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setDrawer(undefined)}>
+    <Drawer visible={Boolean(drawer)} placement="right" size="66.6667vw" header={drawer && <DrawerHeader title={drawer.title} actions={hasDrawerContent && <>
+      {drawer.value !== undefined && <SearchModeButton mode={drawer.searchMode} onMode={changeRecordMode} />}
+      <IconAction label={tr('copyLine')} icon={<CopyIcon />} onClick={() => drawer.physicalLine ? send({ type: 'copy', physicalLine: drawer.physicalLine }) : copied(drawer.text!)} />
+      <IconAction label={tr(altPressed ? 'currentTab' : 'tempTab')} tooltip={tr(altPressed ? 'openCurrent' : 'openTempHint')}
+        icon={altPressed ? <EnterIcon /> : <TabIcon />} onClick={(event) => {
+          const type = event.altKey || altPressed ? 'openCurrent' : 'openTemp';
+          send(drawer.physicalLine ? { type, physicalLine: drawer.physicalLine } : { type, text: drawer.text! });
+        }} />
+    </>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setDrawer(undefined)}>
       {drawer && <div className="drawer-content">
         {drawer.loading ? <div className="drawer-loading"><span className="loading-spinner" aria-hidden /><span>{tr('loading')}</span></div>
-          : drawer.value !== undefined ? <div className="tree drawer-tree" role="tree"><ValueTree value={drawer.value} maxDepth={maxAutoDepth(summary)} jsonPath="@" pointer="" onMenu={onValueMenu}
+          : drawer.value !== undefined ? <RecordTreeView key={drawer.physicalLine} value={drawer.value} summary={summary} mode={drawer.searchMode} shortcutEnabled={!fullText} onMenu={onValueMenu}
             onLongText={(text, pointer) => setFullText({ text, ...(drawer.physicalLine && pointer !== undefined ? { physicalLine: drawer.physicalLine, pointer } : {}) })}
             onCopyText={(text, pointer) => drawer.physicalLine && pointer !== undefined ? send({ type: 'copy', physicalLine: drawer.physicalLine, pointer }) : copied(text)}
-            onOpenText={(text, current, pointer) => drawer.physicalLine && pointer !== undefined ? send({ type: current ? 'openCurrent' : 'openTemp', physicalLine: drawer.physicalLine, pointer }) : openTextTab(text, current)} /></div> : <pre className={`text-viewer ${drawer.text ? '' : 'invalid-text'}`}>{drawer.text}</pre>}
+            onOpenText={(text, current, pointer) => drawer.physicalLine && pointer !== undefined ? send({ type: current ? 'openCurrent' : 'openTemp', physicalLine: drawer.physicalLine, pointer }) : openTextTab(text, current)}
+            openResultText={openLongText} copyResultText={copied} openResultTab={openTextTab} />
+          : hasDrawerContent && <FullContentView key={drawer.physicalLine} text={drawer.text!} inline shortcutEnabled={!fullText} onContextMenu={onFullTextMenu} />}
       </div>}
     </Drawer>
     <Drawer visible={fullText !== undefined} placement="right" size="66.6667vw" header={<DrawerHeader title={tr('fullContent')} actions={fullText !== undefined && <Button size="small" variant="outline" icon={<CopyIcon />} onClick={() => fullText.physicalLine && fullText.pointer !== undefined ? send({ type: 'copy', physicalLine: fullText.physicalLine, pointer: fullText.pointer }) : copied(fullText.text)}>{tr('copyContent')}</Button>} />} footer={false} closeBtn showOverlay closeOnOverlayClick preventScrollThrough={false} closeOnEscKeydown onClose={() => setFullText(undefined)}>

@@ -2,7 +2,7 @@ import { parentPort } from 'node:worker_threads';
 import { performance } from 'node:perf_hooks';
 import type { WorkerRequest, WorkerResponse } from './protocol.js';
 import { validateWorkerRequest } from './protocol.js';
-import { childrenOf, formatJsonEdits, nodeText, parseJsonDocument, queryJson, rootView, type JsonDocument } from './jsonService.js';
+import { childrenOf, formatJsonEdits, nodeText, parseJsonDocument, searchJson, rootView, type JsonDocument } from './jsonService.js';
 import { JsonlIndex } from './jsonlIndex.js';
 import { messageOf, PreviewError } from '../shared/errors.js';
 
@@ -83,7 +83,7 @@ parentPort.on('message', async (value: unknown) => {
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: { content: nodeText(session.json, request.nodeId, request.format) } });
     } else if (request.type === 'json/search') {
       if (!session.json) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSON session.');
-      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: queryJson(session.json, request.query) });
+      respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, data: searchJson(session.json, request.query, request.mode, request.matchIndex, request.time) });
     } else if (request.type === 'jsonl/getPage') {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       const rows = await session.jsonl.page(request.queryId, request.offset, request.limit);
@@ -102,7 +102,7 @@ parentPort.on('message', async (value: unknown) => {
       if (!session.jsonl) throw new PreviewError('WRONG_SESSION_TYPE', 'This is not a JSONL session.');
       session.cancelled.delete(request.requestId); session.activeQueries.add(request.requestId);
       let result;
-      try { result = await session.jsonl.applyQuery(request.queryId, request.filter, request.sort, () => session.cancelled.has(request.requestId), request.jmesPath); }
+      try { result = await session.jsonl.applyQuery(request.queryId, request.filter, request.sort, () => session.cancelled.has(request.requestId), request.jmesPath, request.time); }
       finally { session.activeQueries.delete(request.requestId); session.cancelled.delete(request.requestId); }
       respond({ requestId: request.requestId, sessionId: request.sessionId, ok: true, revision: session.revision, queryRevision: request.queryRevision, data: { rows: await session.jsonl.page(request.queryId, 0, session.jsonl.settings.pageSize), total: session.jsonl.total(request.queryId), ...result, isComplete: true, errors: session.jsonl.errorCount, errorsComplete: session.jsonl.errorsComplete } });
     } else if (request.type === 'jsonl/export') {

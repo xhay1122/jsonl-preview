@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { childrenOf, formatJson, parseJsonDocument, queryJson, rootView } from '../../src/worker/jsonService.js';
+import { childrenOf, formatJson, parseJsonDocument, queryJson, rootView, searchJson } from '../../src/worker/jsonService.js';
 import { defaultSettings } from '../../src/shared/settings.js';
 
 describe('JSON service', () => {
@@ -45,12 +45,39 @@ describe('JSON service', () => {
     expect(queryJson(document, 'users[?active].name').result).toEqual(['Ada']);
     expect(() => queryJson(document, 'users[')).toThrow();
   });
+  it('distinguishes null projections, plain text containing a period and invalid expressions', () => {
+    const document = parseJsonDocument('{"nested":{"empty":null},"value":"foo.bar@example.com","missing":"empty"}', defaultSettings);
+    expect(searchJson(document, '"nested"."empty"', 'reveal')).toEqual({ result: null });
+    expect(searchJson(document, 'nested.absent', 'reveal')).toEqual({ result: null });
+    expect(searchJson(document, 'foo.bar@example.com', 'reveal')).toMatchObject({ matchCount: 1 });
+    expect(() => searchJson(document, 'nested[', 'reveal')).toThrow();
+  });
+  it('targets distinct duplicate properties and supports scalar roots', () => {
+    const document = parseJsonDocument('{"a":"yes","a":"yes"}', defaultSettings);
+    const first = searchJson(document, 'yes', 'reveal');
+    const next = searchJson(document, 'yes', 'reveal', 1);
+    expect(first).toMatchObject({ matchCount: 2, target: { pages: [{ nodes: [{ key: 'a' }, { key: 'a' }] }] } });
+    expect('target' in first && first.target?.nodeId).not.toEqual('target' in next && next.target?.nodeId);
+    const root = parseJsonDocument('null', defaultSettings);
+    expect(searchJson(root, 'null', 'reveal')).toEqual({ matchCount: 1, matchIndex: 0, target: { nodeId: rootView(root)!.nodeId, occurrence: 0, pages: [] } });
+  });
   it('falls back to searching scalar values for plain input', () => {
     const document = parseJsonDocument('{"users":[{"name":"Ada Lovelace","active":true},{"name":"Lin","active":false}],"count":42}', defaultSettings);
     expect(queryJson(document, 'Ada').result).toEqual(['Ada Lovelace']);
     expect(queryJson(document, 'true').result).toEqual([true]);
     expect(queryJson(document, '42').result).toEqual([42]);
     expect(queryJson(document, 'missing').result).toEqual([]);
+  });
+  it('searches numeric substrings in source spelling and localized timestamps in both modes', () => {
+    const document = parseJsonDocument('{"numeric":-123.450,"timestamp":1704067200,"iso":"2024-01-01T00:00:00Z"}', defaultSettings);
+    const time = { locale: 'en', timezone: 'Asia/Shanghai' };
+    expect(queryJson(document, '450', time).result).toEqual([-123.45]);
+    expect(searchJson(document, '450', 'reveal', 0, time)).toMatchObject({ matchCount: 1 });
+    expect(queryJson(document, '4067', time).result).toEqual([1704067200]);
+    expect(queryJson(document, '2024-01', time).result).toEqual(['2024-01-01T00:00:00Z']);
+    expect(queryJson(document, '8:00', time).result).toEqual(['2024-01-01T00:00:00Z', 1704067200]);
+    expect(searchJson(document, '8:00', 'reveal', 0, time)).toMatchObject({ matchCount: 2, target: { occurrence: 0 } });
+    expect(searchJson(document, '8:00', 'reveal', 0, { ...time, timezone: 'UTC' })).toEqual({ matchCount: 0, matchIndex: 0 });
   });
   it('reuses the materialized query value across searches', () => {
     const document = parseJsonDocument('{"users":[{"name":"Ada"}]}', defaultSettings);

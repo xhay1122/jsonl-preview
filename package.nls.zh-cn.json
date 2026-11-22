@@ -1,4 +1,8 @@
 {
+  "configuration.search.defaultMode.description": "JSON 预览及 JSONL 行详情打开时使用的搜索模式。",
+  "configuration.search.defaultMode.filter": "仅显示匹配的值。",
+  "configuration.search.defaultMode.reveal": "在原树中展开并高亮匹配内容。",
+  "configuration.search.defaultMode.remember": "使用当前工作区上次选择的模式。首次使用仅看结果。",
   "editor.text": "JSON(L) 预览",
   "editor.large": "JSONL 大文件预览",
   "command.open": "JSON(L) 预览: 打开预览",

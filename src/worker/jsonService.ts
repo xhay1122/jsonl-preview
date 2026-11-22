@@ -1,9 +1,9 @@
 import { applyEdits, findNodeAtOffset, format, getLocation, getNodeValue, parseTree, printParseErrorCode, type Node, type ParseError } from 'jsonc-parser';
-import type { Diagnostic, JsonNodeView, RepairCandidate, Utf16Offset } from '../shared/types.js';
+import type { Diagnostic, JsonNodeView, JsonSearchData, JsonSearchTarget, RepairCandidate, Utf16Offset } from '../shared/types.js';
 import type { PreviewSettings } from '../shared/settings.js';
-import { search as jmespathSearch } from 'jmespath';
 import { PreviewError } from '../shared/errors.js';
-import { isPlainValueQuery, searchJsonValues } from './valueSearch.js';
+import { checkQueryResultSize, matchGroupAt, queryProjection, scalarMatches, scalarRanges, type JsonSearchMode, type MatchGroup } from '../shared/jsonSearch.js';
+import type { TimeDisplayOptions } from '../shared/dateTime.js';
 
 export interface JsonDocument {
   text: string;
@@ -15,6 +15,7 @@ export interface JsonDocument {
   queryable: boolean;
   queryValue?: unknown;
   queryValueReady?: boolean;
+  revealSearch?: { query: string; time: TimeDisplayOptions; groups: MatchGroup<Node>[]; count: number };
 }
 
 function lineColumn(text: string, offset: number): [number, number] {
@@ -187,28 +188,102 @@ export function nodeText(document: JsonDocument, nodeId: string, style: 'raw' | 
   return applyEdits(raw, format(raw, undefined, { tabSize: style === 'pretty' ? 2 : 0, insertSpaces: true, eol: '\n' }));
 }
 
-export function queryJson(document: JsonDocument, expression: string): { result: unknown } {
+export function queryJson(document: JsonDocument, expression: string, time: TimeDisplayOptions = {}): { result: unknown } {
   if (!document.root) return { result: null };
+  ensureQueryable(document);
+  const projection = queryProjection(() => queryValue(document), expression);
+  if (projection) {
+    checkQueryResultSize(projection.result);
+    return projection;
+  }
+  const result: unknown[] = [];
+  for (const { value, ranges } of scalarNodes(document, expression, time)) {
+    if (!ranges.next().done) result.push(value);
+  }
+  checkQueryResultSize(result);
+  return { result: result.reverse() };
+}
+
+function ensureQueryable(document: JsonDocument): void {
   if (!document.queryable) throw new PreviewError('MAXIMUM_DEPTH', 'Search is disabled because the JSON exceeds the safe query depth.');
-  let result: unknown;
-  // jsonc-parser's getNodeValue recursively rebuilds the complete object. Keep
-  // that immutable projection for the session so consecutive debounced searches
-  // do not pay the O(document size) materialization cost each time.
+}
+
+function queryValue(document: JsonDocument): unknown {
   if (!document.queryValueReady) {
-    document.queryValue = getNodeValue(document.root);
+    document.queryValue = document.root && getNodeValue(document.root);
     document.queryValueReady = true;
   }
-  const rootValue = document.queryValue;
-  try { result = jmespathSearch(rootValue, expression); }
-  catch (error) {
-    if (!isPlainValueQuery(expression)) throw new PreviewError('INVALID_JMESPATH', error instanceof Error ? error.message : String(error));
-    result = searchJsonValues(rootValue, expression);
+  return document.queryValue;
+}
+
+function* scalarNodes(document: JsonDocument, query: string, time: TimeDisplayOptions) {
+  const match = scalarMatches(query);
+  const pending = document.root ? [document.root] : [];
+  while (pending.length) {
+    const node = pending.pop()!;
+    if (node.type === 'object' || node.type === 'array') {
+      const children = node.children ?? [];
+      for (let i = children.length - 1; i >= 0; i--) {
+        const child = children[i]!;
+        const value = child.type === 'property' ? child.children?.[1] : child;
+        if (value) pending.push(value);
+      }
+      continue;
+    }
+    const value: unknown = node.type === 'null' ? null : node.value;
+    const field = node.parent?.type === 'property' ? node.parent.children?.[0]?.value as string | undefined : undefined;
+    const text = value === undefined ? '' : node.type === 'string' ? String(value) : document.text.slice(node.offset, node.offset + node.length);
+    yield { node, value, ranges: scalarRanges(match, text, value, field, time) };
   }
-  // A plain value such as `Ada`, `42`, or `true` is also a useful search term.
-  // JMESPath treats many of these as field names (and returns null), so fall
-  // back to a recursive value search when no projection was found.
-  if (result === null && isPlainValueQuery(expression)) result = searchJsonValues(rootValue, expression);
-  const encoded = JSON.stringify(result);
-  if (encoded && Buffer.byteLength(encoded) > 1024 * 1024) throw new PreviewError('QUERY_RESULT_TOO_LARGE', 'JMESPath result exceeds the 1 MB preview limit. Narrow the expression.');
-  return { result };
+}
+
+export function searchJson(document: JsonDocument, query: string, mode: JsonSearchMode = 'filter', index = 0, time: TimeDisplayOptions = {}): JsonSearchData {
+  if (mode === 'filter') return queryJson(document, query, time);
+  ensureQueryable(document);
+  let cache = document.revealSearch;
+  if (cache?.query !== query || cache.time.locale !== time.locale || cache.time.timezone !== time.timezone) {
+    const projection = document.root && queryProjection(() => queryValue(document), query);
+    if (projection) {
+      checkQueryResultSize(projection.result);
+      return projection;
+    }
+    const groups: MatchGroup<Node>[] = [];
+    let count = 0;
+    for (const { node, ranges } of scalarNodes(document, query, time)) {
+      const first = count;
+      for (const _ of ranges) count++;
+      if (count > first) groups.push({ node, first });
+    }
+    cache = { query, time, groups, count };
+    document.revealSearch = cache;
+  }
+  if (cache.count === 0) return { matchCount: 0, matchIndex: 0 };
+  const matchIndex = index % cache.count;
+  const { node, first } = matchGroupAt(cache.groups, matchIndex)!;
+  const target = revealTarget(document, node, matchIndex - first);
+  return { matchCount: cache.count, matchIndex, target };
+}
+
+function revealTarget(document: JsonDocument, node: Node, occurrence: number): JsonSearchTarget {
+  const chain: Array<{ childIndex: number; childOffset: number }> = [];
+  for (let current = node; current.parent;) {
+    const entry = current.parent.type === 'property' ? current.parent : current;
+    const parent = entry.parent!;
+    chain.push({ childIndex: parent.children!.indexOf(entry), childOffset: current.offset });
+    current = parent;
+  }
+  const pages: JsonSearchTarget['pages'] = [];
+  const distantBranch = chain.findIndex(({ childIndex }) => childIndex >= 100);
+  let view = registerView(document, document.root!, '', '@');
+  for (let i = chain.length - 1; i >= 0; i--) {
+    const { childIndex, childOffset } = chain[i]!;
+    // Give the match and its nearest distant branch their surrounding page
+    // while keeping the rest of the ancestor chain inexpensive to transmit.
+    const limit = i === 0 || i === distantBranch ? 100 : 1;
+    const offset = Math.floor(childIndex / limit) * limit;
+    const nodes = childrenOf(document, view.nodeId, offset, limit);
+    pages.push({ parentId: view.nodeId, offset, nodes });
+    view = nodes.find((child) => child.offset === childOffset)!;
+  }
+  return { nodeId: view.nodeId, occurrence, pages };
 }

@@ -21,6 +21,31 @@ function request(input: RequestInput): Promise<WorkerResponse> {
 }
 
 describe('worker boundary', () => {
+  it('locates text matches in source order without loading intervening JSON pages', async () => {
+    worker = new Worker(resolve('dist/worker.js'));
+    const rows = Array.from({ length: 8010 }, (_, index) => index === 8004 ? { text: 'needle again' } : index === 3 ? { text: 'Needle, needle' } : null);
+    const identity = { sessionId: 'json-search', revision: 'v1' };
+    const opened = await request({ ...identity, type: 'session/openText', kind: 'json',
+      chunks: [JSON.stringify({ keep: 'context', rows })], settings: defaultSettings });
+    expect(opened.ok && opened.data).toMatchObject({ kind: 'json' });
+
+    const search = { ...identity, type: 'json/search', query: 'needle', mode: 'reveal' } as const;
+    const first = await request(search);
+    expect(first.ok && first.data).toMatchObject({ matchCount: 3, matchIndex: 0, target: { occurrence: 0 } });
+    const second = await request({ ...search, matchIndex: 1 });
+    expect(second.ok && second.data).toMatchObject({ matchCount: 3, matchIndex: 1, target: { occurrence: 1 } });
+    const third = await request({ ...search, matchIndex: 2 });
+    if (!third.ok || !('target' in third.data) || !third.data.target) throw new Error('Missing JSON search target');
+    expect(third.data.target.pages.map((page) => page.offset)).toEqual([1, 8000, 0]);
+    const scalar = third.data.target.pages.at(-1)!.nodes[0]!;
+    expect(scalar).toMatchObject({ nodeId: third.data.target.nodeId, pointer: '/rows/8004/text', displayValue: 'needle again' });
+    const copied = await request({ ...identity, type: 'json/getNodeText', nodeId: scalar.nodeId, format: 'raw' });
+    expect(copied.ok && copied.data).toEqual({ content: '"needle again"' });
+
+    const projection = await request({ ...search, query: 'rows[3].text' });
+    expect(projection.ok && projection.data).toEqual({ result: 'Needle, needle' });
+  });
+
   it('opens a chunked session, pages it and rejects stale revisions', async () => {
     worker = new Worker(resolve('dist/worker.js'));
     const opened = await request({ type: 'session/openText', sessionId: 'session', revision: 'v1', kind: 'jsonl', chunks: ['{"id":1}\n', '{"id":2}'], settings: defaultSettings });

@@ -51,10 +51,10 @@ describe('webview drawer styles', () => {
     expect(declarations('.drawer-search-input')).toMatch(/display:\s*flex/);
     expect(declarations('.drawer-search-input')).toMatch(/height:\s*30px/);
     expect(declarations('.match-navigation')).toMatch(/width:\s*var\(--td-comp-size-xs\)/);
-    expect(declarations('.full-content-viewer mark')).toMatch(/background:\s*#fff59d/);
-    expect(declarations('.full-content-viewer mark')).toMatch(/border-radius:\s*3px/);
-    expect(declarations('.full-content-viewer mark.active-match')).toMatch(/background:\s*#f9a825/);
-    expect(declarations('.full-content-viewer mark.active-match')).toMatch(/outline:\s*1px solid/);
+    expect(declarations('.find-highlight')).toMatch(/background:\s*#fff59d/);
+    expect(declarations('.find-highlight')).toMatch(/border-radius:\s*3px/);
+    expect(declarations('.find-highlight.active-match')).toMatch(/background:\s*#f9a825/);
+    expect(declarations('.find-highlight.active-match')).toMatch(/outline:\s*1px solid/);
   });
 
   it('uses the shared responsive three-line clamp and reveals the value action on interaction', () => {

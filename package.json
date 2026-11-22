@@ -181,6 +181,18 @@
           "maximum": 100,
           "description": "%configuration.json.maxAutoExpandDepth.description%"
         },
+        "jsonlPreview.search.defaultMode": {
+          "type": "string",
+          "scope": "resource",
+          "enum": ["filter", "reveal", "remember"],
+          "enumDescriptions": [
+            "%configuration.search.defaultMode.filter%",
+            "%configuration.search.defaultMode.reveal%",
+            "%configuration.search.defaultMode.remember%"
+          ],
+          "default": "remember",
+          "description": "%configuration.search.defaultMode.description%"
+        },
         "jsonlPreview.jsonl.pageSize": {
           "type": "number",
           "default": 1000,

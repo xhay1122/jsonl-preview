@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { WebviewRequest } from '../../src/webview/protocol.js';
+import { defaultSettings } from '../../src/shared/settings.js';
+import { childrenOf, parseJsonDocument, rootView, searchJson } from '../../src/worker/jsonService.js';
 
 const bridge = vi.hoisted(() => {
   const messages: WebviewRequest[] = [];
@@ -40,11 +42,21 @@ describe('React webview app', () => {
     } }));
 
     expect(await screen.findByText('JSONL Preview')).toBeTruthy();
+    const exportButton = screen.getByRole('button', { name: 'Export' });
+    expect(exportButton.textContent?.trim()).toBe('');
+    expect(exportButton.querySelector('.t-icon-file-export')).toBeTruthy();
+    expect(exportButton.getAttribute('title')).toBeNull();
+    fireEvent.mouseEnter(exportButton);
+    expect(screen.getByRole('tooltip').textContent).toBe('Export');
+    fireEvent.mouseLeave(exportButton);
     const input = screen.getByRole('searchbox');
     expect(input.getAttribute('placeholder')).toBe("Filter rows by value or enter JMESPath, e.g. level == 'error'");
     await userEvent.type(input, 'active');
 
     await waitFor(() => expect(bridge.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'query', jmesPath: 'active' })])), { timeout: 1500 });
+    const query = bridge.messages.findLast((message) => message.type === 'query');
+    await userEvent.click(exportButton);
+    expect(bridge.messages).toContainEqual({ type: 'export', queryRevision: query?.queryRevision });
     const beforeClear = bridge.messages.length;
     await userEvent.clear(input);
     await waitFor(() => expect(bridge.messages.slice(beforeClear).some((message) => message.type === 'query' && !('jmesPath' in message))).toBe(true), { timeout: 1500 });
@@ -69,6 +81,164 @@ describe('React webview app', () => {
     }
   });
 
+  it('reveals distant matches in the JSON tree, cycles through occurrences, and restores the original tree', async () => {
+    const post = (data: unknown) => act(() => { window.dispatchEvent(new MessageEvent('message', { data })); });
+    const items = Array.from({ length: 1054 }, (_, index) => index === 1051 ? { label: 'Needle and needle' } : index === 1053 ? { label: 'needle last' } : null);
+    const documentModel = parseJsonDocument(JSON.stringify({ keep: 'context', items, count: 12345, timestamp: 1704067200 }), defaultSettings);
+    const time = { locale: 'en', timezone: 'Asia/Shanghai' };
+    const root = rootView(documentModel)!;
+    render(<App />);
+    post({
+      type: 'init', searchPreferences: { defaultMode: 'remember', lastMode: 'reveal' },
+      summary: { kind: 'json', revision: 'v1', byteLength: 300_000, parseMilliseconds: 1, errors: 0, ...time,
+        root, children: childrenOf(documentModel, root.nodeId, 0, 100) }
+    });
+    const input = screen.getByRole('searchbox');
+    const modeButton = screen.getByRole('button', { name: 'Reveal in tree' });
+    expect(modeButton.nextElementSibling).toBe(screen.getByRole('button', { name: 'View Source' }));
+    expect(modeButton.classList.contains('t-button--variant-outline')).toBe(true);
+    for (const name of ['Format', 'Repair', 'Reveal in tree', 'View Source']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.textContent?.trim()).toBe('');
+      expect(button.querySelector('svg')).toBeTruthy();
+      expect(button.getAttribute('title')).toBeNull();
+      fireEvent.mouseEnter(button);
+      expect(screen.getAllByRole('tooltip').some((tooltip) => tooltip.textContent?.includes(name))).toBe(true);
+      fireEvent.mouseLeave(button);
+    }
+    expect(screen.getByText('items').closest('[role="treeitem"]')?.getAttribute('aria-expanded')).toBe('false');
+
+    const respond = async (query: string, index = 0, mode: 'filter' | 'reveal' = 'reveal') => {
+      const response = await waitFor(() => {
+        const request = bridge.messages.findLast((message) => message.type === 'jsonSearch');
+        if (request?.type !== 'jsonSearch' || request.query !== query || request.mode !== mode || request.matchIndex !== index) throw new Error('Waiting for search');
+        return request;
+      });
+      post({ type: 'search', query, searchRevision: response.searchRevision, ...searchJson(documentModel, query, mode, index, time) });
+    };
+    fireEvent.change(input, { target: { value: 'needle' } });
+    await respond('needle');
+    expect(screen.getByText('context')).toBeTruthy();
+    expect(screen.getByText('1/3')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Next match' }).closest('.find-bar')).toBe(input.closest('.find-bar'));
+    expect(document.querySelector('mark.active-match')?.textContent).toBe('Needle');
+    expect(screen.getByText('Showing items 1001–1054')).toBeTruthy();
+    expect(bridge.messages.some((message) => message.type === 'children')).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next match' }));
+    await respond('needle', 1);
+    expect(document.querySelector('mark.active-match')?.textContent).toBe('needle');
+    expect(screen.getByText('2/3')).toBeTruthy();
+    input.focus();
+    await userEvent.keyboard('{Enter}');
+    await respond('needle', 2);
+    expect(screen.getByText('3/3')).toBeTruthy();
+    await userEvent.keyboard('{Enter}');
+    await respond('needle');
+    expect(screen.getByText('1/3')).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reveal in tree' }));
+    expect(bridge.messages).toContainEqual({ type: 'setSearchMode', mode: 'filter' });
+    expect((input as HTMLInputElement).value).toBe('needle');
+    await respond('needle', 0, 'filter');
+    expect(screen.getByRole('tree', { name: 'Query result' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Next match' })).toBeNull();
+
+    fireEvent.change(input, { target: { value: '' } });
+    expect(screen.getByText('items').closest('[role="treeitem"]')?.getAttribute('aria-expanded')).toBe('false');
+    expect(document.querySelector('mark')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Results only' }));
+    fireEvent.change(input, { target: { value: '234' } });
+    await respond('234');
+    expect(document.querySelector('mark.active-match')?.textContent).toBe('234');
+    fireEvent.change(input, { target: { value: '8:00' } });
+    await respond('8:00');
+    expect(document.querySelector('.timestamp-annotation mark.active-match')?.textContent).toBe('8:00');
+  });
+
+  it('searches a JSONL record independently in both modes and isolates its keyboard shortcuts', async () => {
+    const post = (data: unknown) => act(() => { window.dispatchEvent(new MessageEvent('message', { data })); });
+    render(<App />);
+    post({ type: 'init', searchPreferences: { defaultMode: 'filter', lastMode: 'reveal' },
+      summary: { kind: 'jsonl', revision: 'v1', byteLength: 6000, parseMilliseconds: 1, errors: 1, fields: ['id'], recordCount: 3, locale: 'en', timezone: 'Asia/Shanghai', maxAutoExpandDepth: 1 } });
+    const page = await waitFor(() => {
+      const request = bridge.messages.findLast((message) => message.type === 'page');
+      if (!request) throw new Error('Waiting for page');
+      return request;
+    });
+    const record = JSON.stringify({ id: 'first-record', nested: { text: `Needle ${'x'.repeat(4800)} needle`, timestamp: 1704067200 },
+      count: 4321, users: [{ name: 'Ada', active: true }], empty: null });
+    post({ type: 'page', queryRevision: page.queryRevision, offset: 0, total: 3, scannedRows: 3, matchedRows: 3, isComplete: true, rows: [
+      { physicalLine: 1, resultIndex: 1, status: 'valid', rawTruncated: true, raw: record.slice(0, 256), cells: { id: 'first-record' } },
+      { physicalLine: 2, resultIndex: 2, status: 'valid', raw: '{"id":"second-record","text":"needle"}', cells: { id: 'second-record' } },
+      { physicalLine: 3, resultIndex: 3, status: 'invalid', raw: '{"broken": needle needle', cells: { id: 'invalid-record' } }
+    ] });
+    await userEvent.click(screen.getByText('first-record'));
+    expect(bridge.messages).toContainEqual({ type: 'record', physicalLine: 1 });
+    post({ type: 'record', physicalLine: 1, content: record });
+    const details = within(document.querySelector<HTMLElement>('.t-drawer__body')!);
+    const actions = within(document.querySelector<HTMLElement>('.drawer-header-actions')!);
+    const input = details.getByRole('searchbox') as HTMLInputElement;
+    const modeButton = actions.getByRole('button', { name: 'Results only' });
+    expect(modeButton.nextElementSibling).toBe(actions.getByRole('button', { name: 'Copy Row' }));
+    for (const button of actions.getAllByRole('button')) {
+      expect(button.textContent?.trim()).toBe('');
+      expect(button.querySelector('svg')).toBeTruthy();
+      expect(button.getAttribute('title')).toBeNull();
+    }
+    fireEvent.keyDown(window, { key: 'f', ctrlKey: true });
+    expect(document.activeElement).toBe(input);
+    fireEvent.change(input, { target: { value: 'needle' } });
+    expect(await details.findByRole('tree', { name: 'Query result' })).toBeTruthy();
+    await userEvent.click(modeButton);
+    expect(input.value).toBe('needle');
+    expect(await details.findByText('1/2')).toBeTruthy();
+    expect(document.querySelector('mark.active-match')?.textContent).toBe('Needle');
+    input.focus();
+    await userEvent.keyboard('{Shift>}{Enter}{/Shift}');
+    expect(details.getByText('2/2')).toBeTruthy();
+    expect(document.querySelector('mark.active-match')?.textContent).toBe('needle');
+    expect(document.querySelector('mark.active-match')?.parentElement?.textContent?.startsWith('…')).toBe(true);
+
+    fireEvent.change(input, { target: { value: '321' } });
+    expect(await details.findByText('1/1')).toBeTruthy();
+    expect(document.querySelector('mark.active-match')?.textContent).toBe('321');
+    fireEvent.change(input, { target: { value: '8:00' } });
+    await waitFor(() => expect(document.querySelector('.timestamp-annotation mark.active-match')?.textContent).toBe('8:00'));
+    await userEvent.click(actions.getByRole('button', { name: 'Reveal in tree' }));
+    const timeResult = await details.findByRole('tree', { name: 'Query result' });
+    expect(within(timeResult).getByText('1704067200')).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: 'users[?active].name' } });
+    const projected = await details.findByRole('tree', { name: 'Query result' });
+    expect(within(projected).getByText('Ada')).toBeTruthy();
+    expect(details.queryByRole('button', { name: 'Next match' })).toBeNull();
+    fireEvent.change(input, { target: { value: 'users[' } });
+    expect(await details.findByRole('alert')).toBeTruthy();
+    fireEvent.change(input, { target: { value: 'empty' } });
+    const nullResult = await details.findByRole('tree', { name: 'Query result' });
+    expect(within(nullResult).getByText('null')).toBeTruthy();
+    expect(details.queryByRole('alert')).toBeNull();
+    expect(bridge.messages.some((message) => message.type === 'query' || message.type === 'jsonSearch')).toBe(false);
+
+    await userEvent.click(document.querySelector<HTMLElement>('.t-drawer__close-btn')!);
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeNull());
+    await userEvent.click(screen.getByText('second-record'));
+    const nextDetails = within(document.querySelector<HTMLElement>('.t-drawer__body')!);
+    expect((nextDetails.getByRole('searchbox') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('button', { name: 'Results only' }).closest('.drawer-header-actions')).toBeTruthy();
+    post({ type: 'record', physicalLine: 1, content: record });
+    expect(nextDetails.getByText('second-record')).toBeTruthy();
+    await userEvent.click(document.querySelector<HTMLElement>('.t-drawer__close-btn')!);
+    await waitFor(() => expect(document.querySelector('.t-drawer--open')).toBeNull());
+    await userEvent.click(screen.getByText('invalid-record'));
+    const raw = within(document.querySelector<HTMLElement>('.t-drawer__body')!);
+    fireEvent.change(raw.getByRole('searchbox', { name: 'Search raw record text' }), { target: { value: 'needle' } });
+    expect(raw.getByText('1/2')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Results only' })).toBeNull();
+  });
+
   it('keeps the grid and search visible while previewing a JSONL row', async () => {
     render(<App />);
     window.dispatchEvent(new MessageEvent('message', { data: {
@@ -87,18 +257,21 @@ describe('React webview app', () => {
       queryRevision: page && 'queryRevision' in page ? page.queryRevision : 1
     } }));
     await userEvent.click(await screen.findByText('Ada'));
-    expect(screen.getByRole('searchbox')).toBeTruthy();
+    expect(screen.getByPlaceholderText("按值筛选行，或输入 JMESPath，如 level == 'error'")).toBeTruthy();
+    expect(screen.getByRole('searchbox', { name: '在当前记录中搜索，或输入 JMESPath' })).toBeTruthy();
     expect(screen.getByRole('grid')).toBeTruthy();
     expect(await screen.findByText('第 1 行')).toBeTruthy();
     const temporaryTab = screen.getByRole('button', { name: '临时 Tab 打开' });
     expect(temporaryTab.querySelector('.t-icon-tab')).toBeTruthy();
-    expect(temporaryTab.getAttribute('title')).toBe('在临时 Tab 打开（按住 Alt/Option 在当前 Tab 打开）');
+    fireEvent.mouseEnter(temporaryTab);
+    expect(screen.getByRole('tooltip').textContent).toBe('在临时 Tab 打开（按住 Alt/Option 在当前 Tab 打开）');
     expect(temporaryTab.closest('.t-drawer__header')).toBeTruthy();
     expect(screen.queryByRole('button', { name: '当前 Tab 打开' })).toBeNull();
     fireEvent.keyDown(window, { key: 'Alt' });
     const currentTab = screen.getByRole('button', { name: '当前 Tab 打开' });
     expect(currentTab.querySelector('.t-icon-enter')).toBeTruthy();
-    expect(currentTab.getAttribute('title')).toBe('在当前 Tab 打开');
+    expect(screen.getByRole('tooltip').textContent).toBe('在当前 Tab 打开');
+    fireEvent.mouseLeave(currentTab);
     expect(screen.queryByRole('button', { name: '临时 Tab 打开' })).toBeNull();
     fireEvent.click(currentTab);
     expect(bridge.messages).toContainEqual({ type: 'openCurrent', physicalLine: 1 });

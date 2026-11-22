@@ -1,4 +1,5 @@
-import type { JsonNodeView, JsonlRow } from '../shared/types.js';
+import type { JsonNodeView, JsonlRow, JsonSearchData } from '../shared/types.js';
+import type { JsonSearchMode, JsonSearchPreferences } from '../shared/jsonSearch.js';
 import type { SortState, ViewState, WebviewSummary } from './protocol.js';
 
 export interface TreeState {
@@ -29,25 +30,30 @@ export interface AppState {
   view: ViewState;
   queryRevision: number;
   searchRevision: number;
+  searchMode: JsonSearchMode;
+  searchPreferences: JsonSearchPreferences;
   requestedOffset: number;
   page: PageState;
   tree: TreeState;
-  searchResult: { query: string; result: unknown } | undefined;
+  searchResult: ({ query: string } & JsonSearchData) | undefined;
+  searchError: string | undefined;
   progressRecords: number | undefined;
   error: string | undefined;
 }
 
 export type Action =
-  | { type: 'init'; summary: WebviewSummary; view?: ViewState }
+  | { type: 'init'; summary: WebviewSummary; view?: ViewState; searchPreferences?: JsonSearchPreferences }
   | { type: 'setQuery'; query: string }
   | { type: 'setSort'; sort?: SortState }
   | { type: 'setColumnWidths'; columnWidths: Record<string, number> }
   | { type: 'startQuery'; queryRevision: number }
   | { type: 'requestPage'; offset: number }
   | { type: 'startSearch'; searchRevision: number }
+  | { type: 'setSearchMode'; mode: JsonSearchMode }
+  | { type: 'searchPreferences'; preferences: JsonSearchPreferences }
   | { type: 'page'; queryRevision: number; offset: number; page: Omit<PageState, 'offset' | 'loaded'> }
-  | { type: 'search'; searchRevision: number; query: string; result: unknown }
-  | { type: 'clearSearch'; searchRevision: number }
+  | ({ type: 'search'; searchRevision: number; query: string } & JsonSearchData)
+  | { type: 'searchError'; searchRevision: number; message: string }
   | { type: 'treeLoading'; nodeId: string }
   | { type: 'treeChildren'; generation: number; parentId: string; offset: number; nodes: JsonNodeView[] }
   | { type: 'toggleNode'; nodeId: string; open: boolean }
@@ -57,6 +63,11 @@ export type Action =
   | { type: 'clearError' };
 
 const emptyPage: PageState = { rows: [], total: 0, offset: 0, loaded: false, scannedRows: 0, matchedRows: 0, isComplete: true };
+const defaultSearchPreferences: JsonSearchPreferences = { defaultMode: 'remember', lastMode: 'filter' };
+
+export function initialSearchMode(preferences: JsonSearchPreferences): JsonSearchMode {
+  return preferences.defaultMode === 'remember' ? preferences.lastMode : preferences.defaultMode;
+}
 // Expanding a JSON tree is intentionally eager for small documents because it
 // makes them pleasant to inspect. On wider real-world files (package-lock.json
 // is a common example), eager expansion fans out into hundreds of host requests
@@ -115,7 +126,7 @@ function initialTree(summary?: WebviewSummary, generation = 0): TreeState {
 }
 
 export function createInitialState(view: ViewState = {}): AppState {
-  return { summary: undefined, view: sanitizeViewState(view), queryRevision: 0, searchRevision: 0, requestedOffset: 0, page: emptyPage, tree: initialTree(), searchResult: undefined, progressRecords: undefined, error: undefined };
+  return { summary: undefined, view: sanitizeViewState(view), queryRevision: 0, searchRevision: 0, searchMode: 'filter', searchPreferences: defaultSearchPreferences, requestedOffset: 0, page: emptyPage, tree: initialTree(), searchResult: undefined, searchError: undefined, progressRecords: undefined, error: undefined };
 }
 
 export function reducer(state: AppState, action: Action): AppState {
@@ -134,6 +145,7 @@ export function reducer(state: AppState, action: Action): AppState {
       const initializedView = view.sort === undefined && timestampField
         ? { ...view, sort: { field: timestampField, direction: 'asc' } as const }
         : view;
+      const searchPreferences = action.searchPreferences ?? state.searchPreferences;
       return {
         ...state,
         summary: action.summary,
@@ -141,11 +153,14 @@ export function reducer(state: AppState, action: Action): AppState {
         requestedOffset: 0,
         page: emptyPage,
         searchResult: undefined,
+        searchError: undefined,
+        searchPreferences,
+        searchMode: state.summary ? state.searchMode : initialSearchMode(searchPreferences),
         tree: initialTree(action.summary, state.tree.generation + 1),
         error: undefined
       };
     }
-    case 'setQuery': return { ...state, view: { ...state.view, query: action.query }, error: undefined };
+    case 'setQuery': return { ...state, view: { ...state.view, query: action.query }, searchResult: undefined, searchError: undefined, error: undefined };
     case 'setSort': {
       return { ...state, view: { ...state.view, sort: action.sort ?? null } };
     }
@@ -154,6 +169,11 @@ export function reducer(state: AppState, action: Action): AppState {
     case 'startQuery': return { ...state, queryRevision: action.queryRevision, requestedOffset: 0, page: { ...state.page, offset: 0 } };
     case 'requestPage': return { ...state, requestedOffset: action.offset };
     case 'startSearch': return { ...state, searchRevision: action.searchRevision };
+    case 'setSearchMode': return {
+      ...state, searchMode: action.mode, searchPreferences: { ...state.searchPreferences, lastMode: action.mode },
+      searchResult: undefined, searchError: undefined
+    };
+    case 'searchPreferences': return { ...state, searchPreferences: action.preferences };
     case 'page': {
       if (action.queryRevision !== state.queryRevision || action.offset !== state.requestedOffset) return state;
       let summary = state.summary;
@@ -168,12 +188,14 @@ export function reducer(state: AppState, action: Action): AppState {
         progressRecords: undefined
       };
     }
-    case 'search':
+    case 'search': {
       if (action.searchRevision !== state.searchRevision) return state;
-      return { ...state, searchResult: { query: action.query, result: action.result } };
-    case 'clearSearch':
+      const { type: _type, searchRevision: _revision, ...result } = action;
+      return { ...state, searchResult: result, searchError: undefined };
+    }
+    case 'searchError':
       if (action.searchRevision !== state.searchRevision) return state;
-      return { ...state, searchResult: undefined };
+      return { ...state, searchResult: undefined, searchError: action.message };
     case 'treeLoading': {
       const loading = new Set(state.tree.loading); loading.add(action.nodeId);
       return { ...state, tree: { ...state.tree, loading } };

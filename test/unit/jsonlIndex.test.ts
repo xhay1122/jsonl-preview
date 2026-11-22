@@ -66,7 +66,7 @@ describe('JSONL index', () => {
     await index.openText([
       '{"name":"Ada","nested":{"role":"admin"}}',
       '{"name":"Grace","tags":["reader","ADA-team"]}',
-      '{"name":"Lin","active":true,"count":42}',
+      '{"name":"Lin","active":true,"count":1425,"nested":{"timestamp":1704067200}}',
       '{"name":"True","active":false,"count":"42"}'
     ].join('\n'));
 
@@ -77,7 +77,12 @@ describe('JSONL index', () => {
     expect((await index.page('boolean', 0, 10)).map((row) => row.physicalLine)).toEqual([3]);
 
     await index.applyQuery('number', undefined, undefined, () => false, '42');
-    expect((await index.page('number', 0, 10)).map((row) => row.physicalLine)).toEqual([3]);
+    expect((await index.page('number', 0, 10)).map((row) => row.physicalLine)).toEqual([3, 4]);
+
+    await index.applyQuery('raw-time', undefined, undefined, () => false, '4067');
+    expect((await index.page('raw-time', 0, 10)).map((row) => row.physicalLine)).toEqual([3]);
+    await index.applyQuery('formatted-time', undefined, undefined, () => false, '8:00', { locale: 'en', timezone: 'Asia/Shanghai' });
+    expect((await index.page('formatted-time', 0, 10)).map((row) => row.physicalLine)).toEqual([3]);
     await index.close();
   });
   it('treats ASCII whitespace-only physical lines as empty', async () => {

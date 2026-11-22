@@ -17,6 +17,15 @@ export interface JsonNodeView {
   ambiguousPath?: boolean;
 }
 
+export interface JsonSearchTarget {
+  nodeId: string;
+  occurrence: number;
+  pages: Array<{ parentId: string; offset: number; nodes: JsonNodeView[] }>;
+}
+
+export type JsonSearchData = { result: unknown }
+  | { matchCount: number; matchIndex: number; target?: JsonSearchTarget };
+
 export interface Diagnostic {
   code: string;
   message: string;

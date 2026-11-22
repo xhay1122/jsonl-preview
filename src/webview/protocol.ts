@@ -1,4 +1,5 @@
-import type { JsonNodeView, JsonlRow, SessionSummary, SortSpec } from '../shared/types.js';
+import { isJsonSearchMode, type JsonSearchMode, type JsonSearchPreferences } from '../shared/jsonSearch.js';
+import type { JsonNodeView, JsonlRow, JsonSearchData, SessionSummary, SortSpec } from '../shared/types.js';
 
 export interface ViewState {
   query?: string;
@@ -25,8 +26,9 @@ export type WebviewRequest =
   | { type: 'children'; nodeId: string; parentId: string; generation: number; offset: number; limit: number }
   | { type: 'page'; offset: number; queryRevision: number }
   | { type: 'record'; physicalLine: number }
-  | { type: 'query'; queryRevision: number; jmesPath?: string; sort?: SortSpec }
-  | { type: 'jsonSearch'; query: string; searchRevision: number }
+  | { type: 'query'; queryRevision: number; jmesPath?: string; sort?: SortSpec; systemTimezone?: string }
+  | { type: 'jsonSearch'; query: string; searchRevision: number; mode: JsonSearchMode; matchIndex?: number; systemTimezone?: string }
+  | { type: 'setSearchMode'; mode: JsonSearchMode }
   | { type: 'revealLine'; line: number }
   | { type: 'copy'; text: string }
   | { type: 'copy'; nodeId: string; format: 'raw' | 'compact' | 'pretty' }
@@ -49,13 +51,15 @@ export type WebviewRequest =
   | { type: 'persist'; state: ViewState };
 
 export type HostMessage =
-  | { type: 'init'; summary: WebviewSummary; uiState?: ViewState }
+  | { type: 'init'; summary: WebviewSummary; uiState?: ViewState; searchPreferences?: JsonSearchPreferences }
   | { type: 'children'; parentId: string; generation: number; offset: number; nodes: JsonNodeView[] }
   | { type: 'page'; rows: JsonlRow[]; total: number; scannedRows: number; matchedRows: number; isComplete: boolean; errors?: number; errorsComplete?: boolean; offset: number; queryRevision: number }
   | { type: 'record'; physicalLine: number; content: string }
   | { type: 'copied' }
   | { type: 'progress'; records: number; scannedBytes?: number; totalBytes?: number; revision?: string }
-  | { type: 'search'; query: string; result: unknown; searchRevision: number }
+  | ({ type: 'search'; query: string; searchRevision: number } & JsonSearchData)
+  | { type: 'searchError'; searchRevision: number; message: string }
+  | ({ type: 'searchPreferences' } & JsonSearchPreferences)
   | { type: 'error'; message: string };
 
 export interface VsCodeApi {
@@ -73,7 +77,10 @@ export function isHostMessage(value: unknown): value is HostMessage {
   if (message.type === 'record') return Number.isSafeInteger(message.physicalLine) && Number(message.physicalLine) > 0 && typeof message.content === 'string';
   if (message.type === 'copied') return true;
   if (message.type === 'progress') return Number.isFinite(message.records);
-  if (message.type === 'search') return typeof message.query === 'string' && Number.isInteger(message.searchRevision) && 'result' in message;
+  if (message.type === 'search') return typeof message.query === 'string' && Number.isInteger(message.searchRevision)
+    && ('result' in message || Number.isSafeInteger(message.matchCount) && Number.isSafeInteger(message.matchIndex));
+  if (message.type === 'searchError') return Number.isInteger(message.searchRevision) && typeof message.message === 'string';
+  if (message.type === 'searchPreferences') return (message.defaultMode === 'remember' || isJsonSearchMode(message.defaultMode)) && isJsonSearchMode(message.lastMode);
   if (message.type === 'error') return typeof message.message === 'string';
   return false;
 }

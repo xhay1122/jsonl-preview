@@ -7,6 +7,7 @@ import { PreviewError } from '../shared/errors.js';
 import { parseTree, type Node } from 'jsonc-parser';
 import { compile as compileJmesPath, search as jmespathSearch } from 'jmespath';
 import { createJsonValueMatcher, isPlainValueQuery } from './valueSearch.js';
+import type { TimeDisplayOptions } from '../shared/dateTime.js';
 
 interface ParsedLine { raw: string; value?: unknown; cells: Record<string, unknown>; cellsCollected: boolean; exactNumbers: Map<string, string>; exactCollected: boolean; diagnostic?: Diagnostic }
 interface CachedLine { value: ParsedLine; bytes: number }
@@ -347,7 +348,7 @@ export class JsonlIndex {
     if (Number(current.size) !== this.sourceSignature.size || current.mtimeNs.toString() !== this.sourceSignature.mtimeNs || current.dev.toString() !== this.sourceSignature.dev || current.ino.toString() !== this.sourceSignature.ino) throw new PreviewError('SOURCE_CHANGED', 'The file changed after it was indexed; refresh the preview.');
   }
 
-  async applyQuery(queryId: string, filter: Filter | undefined, sort: SortSpec | undefined, cancelled: () => boolean, jmesPath = ''): Promise<{ scannedRows: number; matchedRows: number }> {
+  async applyQuery(queryId: string, filter: Filter | undefined, sort: SortSpec | undefined, cancelled: () => boolean, jmesPath = '', time: TimeDisplayOptions = { timezone: this.settings.timezone }): Promise<{ scannedRows: number; matchedRows: number }> {
     await this.ensureSourceUnchanged();
     if (!filter && !jmesPath && (!sort || 'by' in sort)) {
       const base = this.query('default').rows;
@@ -357,7 +358,7 @@ export class JsonlIndex {
     }
     if (sort && 'path' in sort && this.lines.length > this.settings.maxSortableRows) throw new PreviewError('SORT_LIMIT', `Sorting is limited to ${this.settings.maxSortableRows} records.`);
     const plainValueQuery = jmesPath ? isPlainValueQuery(jmesPath) : false;
-    const matchesJsonValue = plainValueQuery ? createJsonValueMatcher(jmesPath) : undefined;
+    const matchesJsonValue = plainValueQuery ? createJsonValueMatcher(jmesPath, time) : undefined;
     let valueSearchOnly = false;
     if (jmesPath) {
       try { compileJmesPath(jmesPath); }

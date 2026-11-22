@@ -1,4 +1,9 @@
 const zh = {
+  searchRecord: '在当前记录中搜索，或输入 JMESPath',
+  searchRawRecord: '在当前记录原文中搜索',
+  searchFilter: '仅看结果', searchReveal: '展开定位',
+  searchModeToggle: '搜索模式：{mode}，切换到{next}',
+  resultWindow: '显示第 {first}–{last} 项',
   timezoneUnknown: '时区未知', expand: '查看', loading: '加载中…', loadMore: '加载更多（{loaded}/{total}）',
   searchJson: '按值搜索，或输入 JMESPath，如 users[?active].name', searchJsonl: "按值筛选行，或输入 JMESPath，如 level == 'error'", format: '格式化', repair: '修复', export: '导出', source: '查看源码', originalOrder: '按原始行号排序',
   records: '{count} 条记录', errors: '{count} 个错误', errorsFound: '已发现 {count} 个错误', indexed: '已索引 {count} 条', queryResult: '搜索 / JMESPath 查询结果', queryResultAria: '查询结果',
@@ -9,6 +14,11 @@ const zh = {
 } as const;
 
 const en: Record<keyof typeof zh, string> = {
+  searchRecord: 'Search this record or enter JMESPath',
+  searchRawRecord: 'Search raw record text',
+  searchFilter: 'Results only', searchReveal: 'Reveal in tree',
+  searchModeToggle: 'Search mode: {mode}. Switch to {next}',
+  resultWindow: 'Showing items {first}–{last}',
   timezoneUnknown: 'Unknown timezone', expand: 'View', loading: 'Loading…', loadMore: 'Load more ({loaded}/{total})',
   searchJson: 'Search values or enter JMESPath, e.g. users[?active].name', searchJsonl: "Filter rows by value or enter JMESPath, e.g. level == 'error'", format: 'Format', repair: 'Repair', export: 'Export', source: 'View Source', originalOrder: 'Sort by original line number',
   records: '{count} records', errors: '{count} errors', errorsFound: '{count} errors found', indexed: 'Indexed {count}', queryResult: 'Search / JMESPath result', queryResultAria: 'Query result',
